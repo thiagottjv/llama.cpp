@@ -1135,8 +1135,27 @@ inline std::string llm_ffn_block_regex(int idx, const char * ffn_regex) {
     return string_format("blk\\.%d%s", idx, ffn_regex);
 }
 
+inline ggml_backend_buffer_type_t common_host_buffer_type() {
+    for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
+        auto * dev = ggml_backend_dev_get(i);
+        auto * host_buft = ggml_backend_dev_host_buffer_type(dev);
+        if (host_buft) {
+            return host_buft;
+        }
+    }
+    return ggml_backend_cpu_buffer_type();
+}
+
 inline llama_model_tensor_buft_override llm_ffn_exps_cpu_override() {
     return { LLM_FFN_EXPS_REGEX, ggml_backend_cpu_buffer_type() };
+}
+
+inline llama_model_tensor_buft_override llm_ffn_exps_host_override() {
+    return { LLM_FFN_EXPS_REGEX, common_host_buffer_type() };
+}
+
+inline std::string llm_ffn_exps_block_regex(int idx) {
+    return llm_ffn_block_regex(idx, LLM_FFN_EXPS_REGEX);
 }
 
 inline void llm_add_n_cpu_ffn_overrides(int n, const char * ffn_regex, std::vector<llama_model_tensor_buft_override> & overrides) {
