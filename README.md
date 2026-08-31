@@ -1,3 +1,14 @@
+# This fork: per-expert MoE offload (expert-tier branch)
+
+Run huge MoE models on small VRAM: a heat-tracked **per-expert VRAM cache** instead of
+upstream's per-layer CPU offload. Qwen3.8-Flash-Next (176B, UD-Q4_K_XL) with VRAM capped
+to 32GB: **24.2 → 32.9 tok/s** vs layer-split; 74.9 tok/s uncapped on 96GB.
+Includes PR #27742 (qwen4exp) and a routing-analysis tool.
+
+**→ [EXPERT_TIER.md](EXPERT_TIER.md) — what it is, results, copy-paste reproduction.**
+
+---
+
 # llama.cpp
 
 ![llama](https://raw.githubusercontent.com/ggml-org/llama.brand/refs/heads/master/cover/llama-cpp/cover-llama-cpp-dark.svg)

@@ -35,6 +35,7 @@
 #include <set>
 #include <string>
 #include <system_error>
+#include <cstring>
 #include <thread> // for hardware_concurrency
 #include <vector>
 
@@ -256,6 +257,11 @@ static void parse_tensor_buffer_overrides(const std::string & value, std::vector
     for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
         auto * dev = ggml_backend_dev_get(i);
         auto * buft = ggml_backend_dev_buffer_type(dev);
+        // also expose each device host buffer type (e.g. CUDA_Host) so tensors
+        // can be pinned in host memory while staying visible to the device
+        if (auto * hbuft = ggml_backend_dev_host_buffer_type(dev)) {
+            buft_list[ggml_backend_buft_name(hbuft)] = hbuft;
+        }
         if (buft) {
             buft_list[ggml_backend_buft_name(buft)] = buft;
         }
@@ -940,6 +946,22 @@ static bool common_params_parse_ex(int argc, char ** argv, common_params_context
     if ((!params.server_tools.empty() || mcp_enabled) && !params.cors_origins_explicit) {
         LOG_WRN("server tools or MCP servers are enabled, using localhost as default CORS origin (change via --cors-origins)\n");
         params.cors_origins = "localhost";
+    }
+
+    // manual hot store slots need all MoE weights in the CPU (host pointers);
+    // auto-activate -cmoe unless the user already did (or wants autofit slots)
+    if (params.expert_hot_s > 0) {
+        bool has_cmoe = false;
+        for (const auto & o : params.tensor_buft_overrides) {
+            if (o.pattern != nullptr && strcmp(o.pattern, LLM_FFN_EXPS_REGEX) == 0) {
+                has_cmoe = true;
+                break;
+            }
+        }
+        if (!has_cmoe) {
+            params.tensor_buft_overrides.push_back(llm_ffn_exps_cpu_override());
+            LOG_WRN("manually selecting --expert-hot-s slots activates --cmoe (all MoE weights kept in the CPU)\n");
+        }
     }
 
     // pad tensor_buft_overrides for llama_params_fit:
@@ -2796,6 +2818,49 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
         }
     ).set_env("LLAMA_ARG_N_CPU_MOE"));
     add_opt(common_arg(
+        {"--expert-heat-decay"}, "F",
+        "expert heatmap decay rate per update (default: 0.999)",
+        [](common_params & params, const std::string & value) {
+            params.expert_heat_decay = std::stof(value);
+        }
+    ).set_env("LLAMA_ARG_EXPERT_HEAT_DECAY"));
+    add_opt(common_arg(
+        {"--expert-heat-log-period"}, "N",
+        "expert heatmap log interval in updates (default: 0, 0 = off)",
+        [](common_params & params, int value) {
+            params.expert_heat_log_period = value;
+        }
+    ).set_env("LLAMA_ARG_EXPERT_HEAT_LOG_PERIOD"));
+    add_opt(common_arg(
+        {"--expert-hyst"}, "F",
+        "expert hot store hysteresis ratio (default: 1.3, 0 = off)",
+        [](common_params & params, const std::string & value) {
+            params.expert_hyst = std::stof(value);
+        }
+    ).set_env("LLAMA_ARG_EXPERT_HYST"));
+    add_opt(common_arg(
+        {"--expert-dwell"}, "N",
+        "expert hot store minimum dwell updates before swap (default: 0 = off)",
+        [](common_params & params, int value) {
+            params.expert_dwell = value;
+        }
+    ).set_env("LLAMA_ARG_EXPERT_DWELL"));
+    add_opt(common_arg(
+        {"-ehs", "--expert-hot-s"}, "N",
+        "-1 = autofit slots from free VRAM, 0 = disabled, N = manual top-N slots",
+        [](common_params & params, int value) {
+            params.expert_hot_s = value;
+        }
+    ).set_env("LLAMA_ARG_EXPERT_HOT_S"));
+    add_opt(common_arg(
+        {"--ecf", "--expert-cache-force"},
+        {},
+        "enable the expert cache (hot store) on non-CUDA backends (testing/emergency only)",
+        [](common_params & params, bool value) {
+            params.expert_cache_force = value;
+        }
+    ));
+    add_opt(common_arg(
         {"-ncffn", "--n-cpu-ffn"}, "N",
         "keep the dense FFN weights of the first N layers in the CPU\n"
         "(dense models; for MoE expert weights use --n-cpu-moe)",
@@ -2806,6 +2871,7 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
             llm_add_n_cpu_ffn_overrides(value, LLM_FFN_DENSE_REGEX, params.tensor_buft_overrides);
         }
     ).set_env("LLAMA_ARG_N_CPU_FFN"));
+
     GGML_ASSERT(params.n_gpu_layers < 0); // string_format would need to be extended for a default >= 0
     add_opt(common_arg(
         {"-ngl", "--gpu-layers", "--n-gpu-layers"}, "N",
