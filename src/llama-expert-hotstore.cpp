@@ -124,7 +124,7 @@ llama_expert_hotstore::llama_expert_hotstore(
     sync_period(sync_period),
     hyst(hyst),
     dwell(dwell) {
-    n_sent = std::max(8, (int) model->hparams.n_expert_used);
+    n_sent = std::max(8, (int) model->hparams.n_expert_used_max());
 
     if (n_layers <= 0) {
         return;
@@ -137,7 +137,7 @@ llama_expert_hotstore::llama_expert_hotstore(
             if (il >= 0 && il < n_layers && tensor->ne[2] > 0) {
                 // a slot holds nbytes/n_experts of this tensor
                 bytes_per_slot[il] += ggml_nbytes(tensor) / (size_t) tensor->ne[2];
-                entries.push_back({il, tensor, nullptr});
+                entries.push_back({il, tensor, nullptr, nullptr});
             }
         }
     }
