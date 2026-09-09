@@ -15,6 +15,7 @@
 #include "llama-memory-hybrid.h"
 #include "llama-memory-hybrid-iswa.h"
 #include "llama-memory-recurrent.h"
+#include "llama-expert-tier.h"
 
 #include <cassert>
 #include <cmath>
@@ -1547,6 +1548,11 @@ ggml_tensor * llm_graph_context::build_lora_mm_id(
           ggml_tensor * cur, // ggml_tensor * b
           ggml_tensor * ids,
           ggml_tensor * w_s) const {
+    if (loras->empty()) {
+        if (auto * r = llama_expert_tier_build(ctx0, w, cur, ids, w_s)) {
+            return r;
+        }
+    }
     ggml_tensor * res = ggml_mul_mat_id(ctx0, w, cur, ids);
 
     if (w_s) {
@@ -2163,6 +2169,19 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
         cb(cur, "ffn_moe_weighted", il);
     }
 
+    // expert tiering: fused cold path
+    ggml_tensor * gw = gate_exps ? gate_exps : gate_up_exps;
+    ggml_tensor * uw = up_exps   ? up_exps   : gate_up_exps;
+    const bool swiglu_clamped = il >= 0 && hparams.swiglu_clamp_exp.size() > (size_t)il && hparams.swiglu_clamp_exp[il] > 1e-6f;
+    const bool cold_ok =
+        (type_op == LLM_FFN_SILU || type_op == LLM_FFN_GELU) &&
+        arch != LLM_ARCH_STEP35 && !weight_before_ffn &&
+        loras->empty() && !swiglu_clamped;
+    const int32_t act = type_op == LLM_FFN_GELU ? 1 : 0;
+    const bool moe_cold = cold_ok &&
+        llama_expert_tier_begin_fused(gw, uw, down_exps, selected_experts);
+    ggml_tensor * x_in = cur;
+
     ggml_tensor * up = nullptr;
     ggml_tensor * experts = nullptr;
 
@@ -2303,6 +2322,13 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
 
     experts = build_lora_mm_id(down_exps, cur, selected_experts, down_exps_s); // [n_embd, n_expert_used, n_tokens]
     cb(experts, "ffn_moe_down", il);
+
+    if (moe_cold) {
+        ggml_tensor * cold = llama_expert_tier_end_fused(ctx0, gw, uw, down_exps, x_in, selected_experts, weights, act);
+        if (cold) {
+            experts = ggml_add(ctx0, experts, cold);
+        }
+    }
 
     if (down_exps_s) {
         cb(experts, "ffn_moe_down_scaled", il);

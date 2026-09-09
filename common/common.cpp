@@ -6,6 +6,8 @@
 #include "fit.h"
 #include "log.h"
 #include "llama.h"
+#include "imatrix-loader.h"
+#include "../src/llama-ext.h"
 #include "sampling.h"
 #include "speculative.h"
 #include "unicode.h"
@@ -1440,6 +1442,91 @@ common_init_result_ptr common_init_from_params(common_params & params, bool mode
     if (model == NULL) {
         COM_ERR("failed to load model '%s'\n", params.model.path.c_str());
         return res;
+    }
+
+    if (params.n_vram_experts > 0) {
+        std::vector<int32_t> expert_order;
+        const int n_layers = llama_model_n_layer(model);
+        const int n_experts = llama_model_n_expert(model);
+
+        if (!params.expert_imatrix.empty() && n_layers > 0 && n_experts > 0) {
+            common_imatrix imatrix_data;
+            if (common_imatrix_load(params.expert_imatrix, imatrix_data)) {
+                expert_order.resize(n_layers * n_experts);
+                int matched_layers = 0;
+                auto extract_scores = [&](const common_imatrix_entry & e, std::vector<float> & out_scores) -> bool {
+                    if ((int) e.counts.size() == n_experts) {
+                        for (int ex = 0; ex < n_experts; ++ex) out_scores[ex] = (float) e.counts[ex];
+                        return true;
+                    }
+                    if ((int) e.sums.size() >= n_experts) {
+                        const int stride = (int) e.sums.size() / n_experts;
+                        for (int ex = 0; ex < n_experts; ++ex) {
+                            float sum = 0.0f;
+                            for (int k = 0; k < stride; ++k) sum += std::abs(e.sums[ex * stride + k]);
+                            out_scores[ex] = sum;
+                        }
+                        return true;
+                    }
+                    return false;
+                };
+
+                for (int il = 0; il < n_layers; ++il) {
+                    const std::vector<std::string> cand_names = {
+                        "blk." + std::to_string(il) + ".ffn_gate_exps.weight",
+                        "blk." + std::to_string(il) + ".ffn_down_exps.weight",
+                        "blk." + std::to_string(il) + ".ffn_up_exps.weight",
+                        "blk." + std::to_string(il) + ".ffn_gate_up_exps.weight",
+                        "blk." + std::to_string(il) + ".ffn_gate_exps",
+                        "blk." + std::to_string(il) + ".ffn_down_exps",
+                        "blk." + std::to_string(il) + ".ffn_up_exps",
+                        "blk." + std::to_string(il) + ".ffn_gate_up_exps"
+                    };
+                    std::vector<float> scores(n_experts, 0.0f);
+                    bool found = false;
+                    for (const auto & name : cand_names) {
+                        auto it = imatrix_data.entries.find(name);
+                        if (it != imatrix_data.entries.end() && extract_scores(it->second, scores)) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        const std::string layer_pat = "blk." + std::to_string(il) + ".";
+                        for (const auto & kv : imatrix_data.entries) {
+                            if (kv.first.find(layer_pat) != std::string::npos &&
+                                kv.first.find("_exps") != std::string::npos &&
+                                extract_scores(kv.second, scores)) {
+                                found = true;
+                                break;
+                            }
+                        }
+                    }
+                    std::vector<int> rank(n_experts);
+                    for (int ex = 0; ex < n_experts; ++ex) {
+                        rank[ex] = ex;
+                    }
+                    if (found) {
+                        matched_layers++;
+                        std::stable_sort(rank.begin(), rank.end(), [&](int a, int b) {
+                            return scores[a] > scores[b];
+                        });
+                    }
+                    for (int ex = 0; ex < n_experts; ++ex) {
+                        expert_order[il * n_experts + ex] = rank[ex];
+                    }
+                }
+                COM_INF("expert tier: loaded imatrix '%s' (%d/%d layers matched, %d experts)\n",
+                    params.expert_imatrix.c_str(), matched_layers, n_layers, n_experts);
+            } else {
+                COM_WRN("expert tier: failed to load imatrix '%s', using default expert ordering\n",
+                    params.expert_imatrix.c_str());
+            }
+        }
+
+        llama_model_init_expert_tier(model, params.n_vram_experts,
+            expert_order.empty() ? nullptr : expert_order.data(), expert_order.size(),
+            params.expert_target_p);
     }
 
     if (model_only) {

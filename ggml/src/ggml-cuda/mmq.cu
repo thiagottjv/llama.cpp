@@ -192,13 +192,16 @@ void ggml_cuda_mul_mat_q(
     // scatter to its slots. ids_src1 then holds the inverse map (token slot -> compact row).
     const bool dedup_bcast = ne11 == 1 && n_expert_used > 1;
 
+    const size_t src0_name_len = strlen(src0->name);
+    const bool is_tiered_hot = src0_name_len >= 4 && strcmp(src0->name + src0_name_len - 4, ".hot") == 0;
+
     {
         GGML_ASSERT(ids->nb[0] == ggml_element_size(ids));
         const int si1  = ids->nb[1] / ggml_element_size(ids);
         const int sis1 = nb12 / nb11;
 
         ggml_cuda_launch_mm_ids_helper((const int32_t *) ids->data, ids_src1.get(), ids_dst.get(), expert_bounds.get(),
-            ne02, ne12, n_expert_used, ne11, si1, sis1, /*write_inverse =*/ dedup_bcast, stream);
+            ne02, ne12, n_expert_used, ne11, si1, sis1, dedup_bcast, stream, is_tiered_hot);
         CUDA_CHECK(cudaGetLastError());
     }
 
@@ -258,7 +261,7 @@ void ggml_cuda_mul_mat_q(
         ne00, ne01, ne_get_rows, s01, ne_get_rows, s1,
         ne02, ne02, s02, s12, s2,
         ne03, ne13, s03, s13, s3,
-        ne12, ncols_opt};
+        is_tiered_hot ? ne_get_rows : ne12, ncols_opt};
 
     ggml_cuda_mul_mat_q_switch_type(ctx, args, stream);
 }

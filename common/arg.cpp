@@ -2770,6 +2770,34 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
         }
     ).set_env("LLAMA_ARG_N_CPU_MOE"));
     add_opt(common_arg(
+        {"-nve", "--n-vram-experts"}, "N",
+        "number of MoE experts per layer to keep in VRAM (requires -cmoe)",
+        [](common_params & params, int value) {
+            if (value < 0) {
+                throw std::invalid_argument("invalid value");
+            }
+            params.n_vram_experts = value;
+        }
+    ).set_env("LLAMA_ARG_N_VRAM_EXPERTS"));
+    add_opt(common_arg(
+        {"--expert-imatrix"}, "<file>",
+        "path to imatrix file for ranking MoE experts to keep in VRAM",
+        [](common_params & params, const std::string & value) {
+            params.expert_imatrix = value;
+        }
+    ).set_env("LLAMA_ARG_EXPERT_IMATRIX"));
+    add_opt(common_arg(
+        {"-etp", "--expert-target-p"}, "N",
+        "target cumulative routing probability mass for active experts (0.0 to 1.0, default: 0.85)",
+        [](common_params & params, const std::string & value) {
+            const float v = std::stof(value);
+            if (v < 0.0f || v > 1.0f) {
+                throw std::invalid_argument("invalid value");
+            }
+            params.expert_target_p = v;
+        }
+    ).set_env("LLAMA_ARG_EXPERT_TARGET_P"));
+    add_opt(common_arg(
         {"-ncffn", "--n-cpu-ffn"}, "N",
         "keep the dense FFN weights of the first N layers in the CPU\n"
         "(dense models; for MoE expert weights use --n-cpu-moe)",

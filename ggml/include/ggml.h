@@ -601,6 +601,8 @@ extern "C" {
 
         GGML_OP_GLU,
 
+        GGML_OP_MOE_COLD,
+
         GGML_OP_COUNT,
     };
 
@@ -1502,6 +1504,24 @@ extern "C" {
             struct ggml_tensor  * as,
             struct ggml_tensor  * b,
             struct ggml_tensor  * ids);
+
+    // fused cold-expert MoE: down(act(gate(x)) * up(x)) computed on CPU
+    // for cold experts only (cold_mask[i] == 1); hot slots zeroed.
+    // act: 0 = silu, 1 = gelu. counts: optional hit counter [n_experts+1].
+    // weights: optional routing weights [1, n_expert_used, n_tokens].
+    // target_p: target cumulative routing probability mass for active experts (default: 0.85).
+    GGML_API struct ggml_tensor * ggml_moe_cold(
+            struct ggml_context * ctx,
+            struct ggml_tensor  * gate,
+            struct ggml_tensor  * up,
+            struct ggml_tensor  * down,
+            struct ggml_tensor  * x,
+            struct ggml_tensor  * ids,
+            struct ggml_tensor  * cold_mask,
+            struct ggml_tensor  * counts,
+            struct ggml_tensor  * weights,
+            int32_t               act,
+            float                 target_p);
 
     // A: m columns, n rows,
     // B: p columns, n rows,

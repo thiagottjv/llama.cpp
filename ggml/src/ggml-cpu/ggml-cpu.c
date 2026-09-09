@@ -13,6 +13,7 @@
 #include "binary-ops.h"
 #include "vec.h"
 #include "ops.h"
+#include "ggml-cpu-moe-cold.h"
 #include "ggml.h"
 #include "common.h"
 
@@ -1463,11 +1464,6 @@ UseGgmlGemm2:;
 
 #define MMID_MATRIX_ROW(row_id, i1) matrix_rows[(row_id)*ids->ne[0]*ids->ne[1] + (i1)]
 
-struct mmid_row_mapping {
-    int32_t i1;
-    int32_t i2;
-};
-
 static void ggml_compute_forward_mul_mat_id_one_chunk(
     struct ggml_tensor * dst,
     const struct ggml_tensor * src0,
@@ -1529,14 +1525,6 @@ static void ggml_compute_forward_mul_mat_id_one_chunk(
             }
         }
     }
-}
-
-static void * incr_ptr_aligned(void ** p, size_t size, size_t align) {
-
-    void * ptr = *p;
-    ptr = (void *) GGML_PAD((uintptr_t) ptr, align);
-    *p = (void *) ((char *) ptr + size);
-    return ptr;
 }
 
 static void ggml_compute_forward_mul_mat_id(
@@ -1865,6 +1853,10 @@ static void ggml_compute_forward(struct ggml_compute_params * params, struct ggm
         case GGML_OP_MUL_MAT_ID:
             {
                 ggml_compute_forward_mul_mat_id(params, tensor);
+            } break;
+        case GGML_OP_MOE_COLD:
+            {
+                ggml_compute_forward_moe_cold(params, tensor);
             } break;
         case GGML_OP_OUT_PROD:
             {
@@ -2355,6 +2347,7 @@ static int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads) {
         case GGML_OP_CONCAT:
         case GGML_OP_MUL_MAT:
         case GGML_OP_MUL_MAT_ID:
+        case GGML_OP_MOE_COLD:
         case GGML_OP_OUT_PROD:
             {
                 n_tasks = n_threads;
@@ -2911,6 +2904,30 @@ struct ggml_cplan ggml_graph_plan(
                         if (ggml_cpu_iqp_supports_mul_mat_id(node)) {
                             cur += n_tasks * ggml_cpu_iqp_scratch_size(node) + 64;
                         }
+                    } break;
+                case GGML_OP_MOE_COLD:
+                    {
+                        cur = 0;
+                        const struct ggml_tensor * w_gate = node->src[0];
+                        const struct ggml_tensor * w_down = node->src[2];
+                        const struct ggml_tensor * x      = node->src[3];
+                        const struct ggml_tensor * ids    = node->src[4];
+                        const enum ggml_type vdt_g = type_traits_cpu[w_gate->type].vec_dot_type;
+                        const enum ggml_type vdt_d = type_traits_cpu[w_down->type].vec_dot_type;
+                        const int n_as = w_gate->ne[2];
+                        const int64_t maxc = ids->ne[0]*ids->ne[1];
+                        // quantized x
+                        cur += ggml_row_size(vdt_g, ggml_nelements(x)) + sizeof(int64_t);
+                        // matrix_row_counts + col0
+                        cur += 2*n_as*sizeof(int64_t) + 2*sizeof(int64_t);
+                        // matrix_rows
+                        cur += n_as*maxc*sizeof(struct mmid_row_mapping) + sizeof(int64_t);
+                        // atomic chunk counters
+                        cur += CACHE_LINE_SIZE*n_as + CACHE_LINE_SIZE;
+                        // gate_out + up_out
+                        cur += 2*w_gate->ne[1]*maxc*sizeof(float) + CACHE_LINE_SIZE;
+                        // act_q
+                        cur += ggml_row_size(vdt_d, w_gate->ne[1])*maxc + CACHE_LINE_SIZE;
                     } break;
                 case GGML_OP_OUT_PROD:
                     {

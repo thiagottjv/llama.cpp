@@ -1631,6 +1631,19 @@ extern "C" {
             ggml_opt_epoch_callback   callback_train,
             ggml_opt_epoch_callback   callback_eval);
 
+    //
+    // Expert tiering (offload top-S experts to VRAM)
+    //
+
+    LLAMA_API bool llama_model_init_expert_tier(
+            struct llama_model * model,
+            int32_t              n_vram_experts,
+            const int32_t      * expert_order,
+            size_t               n_expert_order,
+            float                target_p);
+
+    LLAMA_API void llama_model_free_expert_tier(void);
+
 #ifdef __cplusplus
 }
 #endif

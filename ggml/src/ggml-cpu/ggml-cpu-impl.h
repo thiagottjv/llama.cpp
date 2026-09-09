@@ -528,6 +528,18 @@ static __m256 __lasx_xvreplfr2vr_s(const float val) {
 }
 #endif
 
+struct mmid_row_mapping {
+    int32_t i1;
+    int32_t i2;
+};
+
+static inline void * incr_ptr_aligned(void ** p, size_t size, size_t align) {
+    void * ptr = *p;
+    ptr = (void *) GGML_PAD((uintptr_t) ptr, align);
+    *p = (void *) ((char *) ptr + size);
+    return ptr;
+}
+
 // TODO: move to ggml-threading
 void ggml_barrier(struct ggml_threadpool * tp);
 
