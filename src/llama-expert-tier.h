@@ -52,3 +52,8 @@ struct ggml_tensor * llama_expert_tier_end_fused(struct ggml_context * ctx,
                                                  struct ggml_tensor  * ids,
                                                  struct ggml_tensor  * weights,
                                                  int32_t               act);
+
+// Update dynamic expert cache based on activation counts.
+// Swaps up to max_swaps cold experts with hot experts per layer.
+// Returns total number of expert swaps executed.
+int32_t llama_expert_tier_update(int32_t max_swaps = 1);

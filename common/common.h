@@ -529,6 +529,7 @@ struct common_params {
     int32_t     n_vram_experts  = 0;     // number of MoE experts per layer to keep in VRAM
     float       expert_target_p = 0.85f; // target cumulative routing probability mass for active experts
     std::string expert_imatrix  = "";    // path to imatrix file for expert importance ranking
+    int32_t     expert_swap_max = 1;     // max dynamic expert swaps per layer between requests (0 to disable)
 
     bool lora_init_without_apply = false; // only load lora to memory, but do not apply it to ctx (user can manually apply lora later using llama_adapter_lora_apply)
     std::vector<common_adapter_lora_info> lora_adapters; // lora adapter path with user defined scale

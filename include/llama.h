@@ -1644,6 +1644,10 @@ extern "C" {
 
     LLAMA_API void llama_model_free_expert_tier(void);
 
+    LLAMA_API int32_t llama_model_expert_tier_update(
+            struct llama_model * model,
+            int32_t              max_swaps);
+
 #ifdef __cplusplus
 }
 #endif

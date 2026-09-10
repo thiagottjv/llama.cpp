@@ -595,15 +595,15 @@ struct server_slot {
         return stop_pos;
     }
 
-    void print_timings_tg() {
-        if (stats.n_gen < 100) {
-            return;
+    bool print_timings_tg() {
+        if (stats.n_gen < 50) {
+            return false;
         }
 
         const int64_t t_now = ggml_time_us();
 
         if (t_now - t_print_last < 3*1000*1000) {
-            return;
+            return false;
         }
 
         const double n_gen_second     = stats.n_gen_tps();
@@ -613,6 +613,7 @@ struct server_slot {
         n_gen_last = stats.n_gen;
 
         SLT_INF(*this, "n_gen = %6d, tg = %6.2f t/s, tg_3s = %6.2f t/s\n", (int) stats.n_gen, n_gen_second, n_gen_second_win);
+        return true;
     }
 
     void print_timings_pp() const {
@@ -1301,6 +1302,18 @@ private:
 
             slot.callback_on_release = [this](int id_slot) {
                 queue_tasks.pop_deferred_task(id_slot);
+                if (params_base.expert_swap_max > 0 && model_tgt) {
+                    bool any_processing = false;
+                    for (const auto & s : slots) {
+                        if (s.is_processing()) {
+                            any_processing = true;
+                            break;
+                        }
+                    }
+                    if (!any_processing) {
+                        llama_model_expert_tier_update(model_tgt, params_base.expert_swap_max);
+                    }
+                }
             };
 
             slot.callback_on_reset = [this](const server_slot & slot) {
@@ -3891,7 +3904,11 @@ private:
                 return;
             }
 
-            slot.print_timings_tg();
+            if (slot.print_timings_tg()) {
+                if (params_base.expert_swap_max > 0 && model_tgt) {
+                    llama_model_expert_tier_update(model_tgt, params_base.expert_swap_max);
+                }
+            }
         });
 
         // speculative decoding - main model sample and accept
@@ -4017,7 +4034,11 @@ private:
                 }
             }
 
-            slot.print_timings_tg();
+            if (slot.print_timings_tg()) {
+                if (params_base.expert_swap_max > 0 && model_tgt) {
+                    llama_model_expert_tier_update(model_tgt, params_base.expert_swap_max);
+                }
+            }
 
             SLT_DBG(slot, "accepted %d/%d draft tokens, new n_tokens = %d\n", (int) n_accepted, (int) n_draft, slot.prompt.n_tokens());
         });

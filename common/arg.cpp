@@ -2798,6 +2798,16 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
         }
     ).set_env("LLAMA_ARG_EXPERT_TARGET_P"));
     add_opt(common_arg(
+        {"-esm", "--expert-swap-max"}, "N",
+        "max dynamic expert swaps per layer between requests (default: 1, 0 to disable)",
+        [](common_params & params, int value) {
+            if (value < 0) {
+                throw std::invalid_argument("invalid value");
+            }
+            params.expert_swap_max = value;
+        }
+    ).set_env("LLAMA_ARG_EXPERT_SWAP_MAX"));
+    add_opt(common_arg(
         {"-ncffn", "--n-cpu-ffn"}, "N",
         "keep the dense FFN weights of the first N layers in the CPU\n"
         "(dense models; for MoE expert weights use --n-cpu-moe)",
