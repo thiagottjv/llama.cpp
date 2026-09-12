@@ -2770,15 +2770,15 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
         }
     ).set_env("LLAMA_ARG_N_CPU_MOE"));
     add_opt(common_arg(
-        {"-nve", "--n-vram-experts"}, "N",
-        "number of MoE experts per layer to keep in VRAM (requires -cmoe)",
+        {"-veb", "--vram-expert-budget-mb", "--expert-vram-budget-mb"}, "N",
+        "VRAM budget in MiB to allocate for hot MoE experts (requires -cmoe)",
         [](common_params & params, int value) {
             if (value < 0) {
                 throw std::invalid_argument("invalid value");
             }
-            params.n_vram_experts = value;
+            params.vram_expert_budget_mb = value;
         }
-    ).set_env("LLAMA_ARG_N_VRAM_EXPERTS"));
+    ).set_env("LLAMA_ARG_VRAM_EXPERT_BUDGET_MB"));
     add_opt(common_arg(
         {"--expert-imatrix"}, "<file>",
         "path to imatrix file for ranking MoE experts to keep in VRAM",
@@ -2787,26 +2787,61 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
         }
     ).set_env("LLAMA_ARG_EXPERT_IMATRIX"));
     add_opt(common_arg(
-        {"-etp", "--expert-target-p"}, "N",
-        "target cumulative routing probability mass for active experts (0.0 to 1.0, default: 0.85)",
+        {"-etp", "--expert-target-p"}, "F",
+        "fixed target cumulative routing probability mass (sets both min and max to same value)",
         [](common_params & params, const std::string & value) {
             const float v = std::stof(value);
             if (v < 0.0f || v > 1.0f) {
-                throw std::invalid_argument("invalid value");
+                throw std::invalid_argument("invalid value (must be between 0.0 and 1.0)");
             }
-            params.expert_target_p = v;
+            params.expert_target_p_min = v;
+            params.expert_target_p_max = v;
         }
     ).set_env("LLAMA_ARG_EXPERT_TARGET_P"));
     add_opt(common_arg(
-        {"-esm", "--expert-swap-max"}, "N",
-        "max dynamic expert swaps per layer between requests (default: 1, 0 to disable)",
-        [](common_params & params, int value) {
-            if (value < 0) {
-                throw std::invalid_argument("invalid value");
+        {"-etpmin", "--expert-target-p-min"}, "F",
+        "min target cumulative routing probability mass (0.0 to 1.0, default: 0.85)",
+        [](common_params & params, const std::string & value) {
+            const float v = std::stof(value);
+            if (v < 0.0f || v > 1.0f) {
+                throw std::invalid_argument("invalid value (must be between 0.0 and 1.0)");
             }
-            params.expert_swap_max = value;
+            params.expert_target_p_min = v;
+        }
+    ).set_env("LLAMA_ARG_EXPERT_TARGET_P_MIN"));
+    add_opt(common_arg(
+        {"-etpmax", "--expert-target-p-max"}, "F",
+        "max target cumulative routing probability mass (0.0 to 1.0, default: 0.85, set equal to -etpmin for fixed target)",
+        [](common_params & params, const std::string & value) {
+            const float v = std::stof(value);
+            if (v < 0.0f || v > 1.0f) {
+                throw std::invalid_argument("invalid value (must be between 0.0 and 1.0)");
+            }
+            params.expert_target_p_max = v;
+        }
+    ).set_env("LLAMA_ARG_EXPERT_TARGET_P_MAX"));
+    add_opt(common_arg(
+        {"-esm", "--expert-swap-max"}, "F",
+        "max dynamic expert swaps between requests as fraction of total VRAM experts (default: 0.1, 0 to disable)",
+        [](common_params & params, const std::string & value) {
+            const float v = std::stof(value);
+            if (v < 0.0f || v > 1.0f) {
+                throw std::invalid_argument("invalid value (must be between 0.0 and 1.0)");
+            }
+            params.expert_swap_max = v;
         }
     ).set_env("LLAMA_ARG_EXPERT_SWAP_MAX"));
+    add_opt(common_arg(
+        {"-eda", "--expert-attenuation", "--expert-decay"}, "F",
+        "expert EMA attenuation rate (0.0 to 1.0, default: 0.15, decay = 1 - rate)",
+        [](common_params & params, const std::string & value) {
+            const float v = std::stof(value);
+            if (v < 0.0f || v > 1.0f) {
+                throw std::invalid_argument("invalid value (must be between 0.0 and 1.0)");
+            }
+            params.expert_attenuation = v;
+        }
+    ).set_env("LLAMA_ARG_EXPERT_ATTENUATION"));
     add_opt(common_arg(
         {"-ncffn", "--n-cpu-ffn"}, "N",
         "keep the dense FFN weights of the first N layers in the CPU\n"

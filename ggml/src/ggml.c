@@ -3432,7 +3432,9 @@ struct ggml_tensor * ggml_moe_cold(
         struct ggml_tensor  * counts,
         struct ggml_tensor  * weights,
         int32_t               act,
-        float                 target_p) {
+        float                 target_p_min,
+        float                 target_p_max,
+        struct ggml_tensor  * scores) {
     GGML_ASSERT(!ggml_is_transposed(gate) && !ggml_is_transposed(up) && !ggml_is_transposed(down));
     GGML_ASSERT(ids->type == GGML_TYPE_I32);
     GGML_ASSERT(act == 0 || act == 1);
@@ -3457,6 +3459,10 @@ struct ggml_tensor * ggml_moe_cold(
         GGML_ASSERT(weights->ne[1] == ids->ne[0]);
         GGML_ASSERT(weights->ne[2] == ids->ne[1]);
     }
+    if (scores) {
+        GGML_ASSERT(scores->type == GGML_TYPE_F32);
+        GGML_ASSERT(scores->ne[0] == gate->ne[2]);
+    }
 
     const int64_t ne[4] = { down->ne[1], ids->ne[0], x->ne[2], 1 };
     struct ggml_tensor * result = ggml_new_tensor(ctx, GGML_TYPE_F32, 4, ne);
@@ -3470,8 +3476,10 @@ struct ggml_tensor * ggml_moe_cold(
     result->src[5] = cold_mask;
     result->src[6] = counts;
     result->src[7] = weights;
+    result->src[8] = scores;
     ggml_set_op_params_i32(result, 0, act);
-    ggml_set_op_params_f32(result, 1, target_p);
+    ggml_set_op_params_f32(result, 1, target_p_min);
+    ggml_set_op_params_f32(result, 2, target_p_max);
 
     return result;
 }

@@ -595,6 +595,10 @@ static results_perplexity perplexity(llama_context * ctx, const common_params & 
                 const auto * batch_logits = llama_get_logits(ctx);
                 logits.insert(logits.end(), batch_logits, batch_logits + size_t(n_outputs) * n_vocab);
             }
+
+            if (params.expert_swap_max > 0.0f && j + 1 < num_batches) {
+                llama_model_expert_tier_update(const_cast<llama_model *>(model), params.expert_swap_max, params.expert_attenuation);
+            }
         }
 
 
@@ -642,6 +646,11 @@ static results_perplexity perplexity(llama_context * ctx, const common_params & 
         }
 
         logits.clear();
+
+        if (params.expert_swap_max > 0.0f) {
+            llama_model_expert_tier_update(const_cast<llama_model *>(model), params.expert_swap_max, params.expert_attenuation);
+            llama_model_expert_tier_drain_queue(const_cast<llama_model *>(model), 0);
+        }
     }
     LOG("\n");
 
@@ -1841,6 +1850,10 @@ static void kl_divergence(llama_context * ctx, const common_params & params) {
                 const auto * batch_logits = llama_get_logits(ctx);
                 logits.insert(logits.end(), batch_logits, batch_logits + size_t(n_outputs) * n_vocab);
             }
+
+            if (params.expert_swap_max > 0.0f && j + 1 < num_batches) {
+                llama_model_expert_tier_update(const_cast<llama_model *>(model), params.expert_swap_max, params.expert_attenuation);
+            }
         }
 
         if (i == 0) {
@@ -1902,6 +1915,11 @@ static void kl_divergence(llama_context * ctx, const common_params & params) {
         }
 
         logits.clear();
+
+        if (params.expert_swap_max > 0.0f) {
+            llama_model_expert_tier_update(const_cast<llama_model *>(model), params.expert_swap_max, params.expert_attenuation);
+            llama_model_expert_tier_drain_queue(const_cast<llama_model *>(model), 0);
+        }
     }
 
     llama_batch_free(batch);

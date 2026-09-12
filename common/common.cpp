@@ -1444,89 +1444,243 @@ common_init_result_ptr common_init_from_params(common_params & params, bool mode
         return res;
     }
 
-    if (params.n_vram_experts > 0) {
+    const bool use_expert_tier = (params.vram_expert_budget_mb > 0);
+    if (use_expert_tier) {
         std::vector<int32_t> expert_order;
+        std::vector<int32_t> layer_nve;
         const int n_layers = llama_model_n_layer(model);
         const int n_experts = llama_model_n_expert(model);
 
-        if (!params.expert_imatrix.empty() && n_layers > 0 && n_experts > 0) {
-            common_imatrix imatrix_data;
-            if (common_imatrix_load(params.expert_imatrix, imatrix_data)) {
-                expert_order.resize(n_layers * n_experts);
-                int matched_layers = 0;
-                auto extract_scores = [&](const common_imatrix_entry & e, std::vector<float> & out_scores) -> bool {
-                    if ((int) e.counts.size() == n_experts) {
-                        for (int ex = 0; ex < n_experts; ++ex) out_scores[ex] = (float) e.counts[ex];
-                        return true;
-                    }
-                    if ((int) e.sums.size() >= n_experts) {
-                        const int stride = (int) e.sums.size() / n_experts;
-                        for (int ex = 0; ex < n_experts; ++ex) {
-                            float sum = 0.0f;
-                            for (int k = 0; k < stride; ++k) sum += std::abs(e.sums[ex * stride + k]);
-                            out_scores[ex] = sum;
-                        }
-                        return true;
-                    }
-                    return false;
-                };
+        if (n_layers <= 0 || n_experts <= 0) {
+            COM_WRN("%s", "expert tier: model has no MoE layers or experts, skipping expert tiering\n");
+        } else {
+            std::vector<size_t> layer_expert_bytes(n_layers, 0);
+            for (int il = 0; il < n_layers; ++il) {
+                layer_expert_bytes[il] = llama_model_layer_expert_bytes(model, il);
+                if (layer_expert_bytes[il] == 0) {
+                    layer_expert_bytes[il] = 3072000;
+                }
+            }
 
-                for (int il = 0; il < n_layers; ++il) {
-                    const std::vector<std::string> cand_names = {
-                        "blk." + std::to_string(il) + ".ffn_gate_exps.weight",
-                        "blk." + std::to_string(il) + ".ffn_down_exps.weight",
-                        "blk." + std::to_string(il) + ".ffn_up_exps.weight",
-                        "blk." + std::to_string(il) + ".ffn_gate_up_exps.weight",
-                        "blk." + std::to_string(il) + ".ffn_gate_exps",
-                        "blk." + std::to_string(il) + ".ffn_down_exps",
-                        "blk." + std::to_string(il) + ".ffn_up_exps",
-                        "blk." + std::to_string(il) + ".ffn_gate_up_exps"
-                    };
-                    std::vector<float> scores(n_experts, 0.0f);
-                    bool found = false;
-                    for (const auto & name : cand_names) {
-                        auto it = imatrix_data.entries.find(name);
-                        if (it != imatrix_data.entries.end() && extract_scores(it->second, scores)) {
-                            found = true;
-                            break;
+            const size_t target_budget_bytes = (size_t) params.vram_expert_budget_mb * 1024ULL * 1024ULL;
+            std::vector<float> layer_scores_norm(n_layers * n_experts, 0.5f);
+            expert_order.resize(n_layers * n_experts);
+            layer_nve.assign(n_layers, 0);
+
+            bool loaded_imatrix = false;
+            if (!params.expert_imatrix.empty()) {
+                common_imatrix imatrix_data;
+                if (common_imatrix_load(params.expert_imatrix, imatrix_data)) {
+                    int matched_layers = 0;
+                    auto extract_scores = [&](const common_imatrix_entry & e, std::vector<float> & out_scores) -> bool {
+                        if ((int) e.counts.size() == n_experts) {
+                            for (int ex = 0; ex < n_experts; ++ex) out_scores[ex] = (float) e.counts[ex];
+                            return true;
                         }
-                    }
-                    if (!found) {
-                        const std::string layer_pat = "blk." + std::to_string(il) + ".";
-                        for (const auto & kv : imatrix_data.entries) {
-                            if (kv.first.find(layer_pat) != std::string::npos &&
-                                kv.first.find("_exps") != std::string::npos &&
-                                extract_scores(kv.second, scores)) {
+                        if ((int) e.sums.size() >= n_experts) {
+                            const int stride = (int) e.sums.size() / n_experts;
+                            for (int ex = 0; ex < n_experts; ++ex) {
+                                float sum = 0.0f;
+                                for (int k = 0; k < stride; ++k) sum += std::abs(e.sums[ex * stride + k]);
+                                out_scores[ex] = sum;
+                            }
+                            return true;
+                        }
+                        return false;
+                    };
+
+                    struct global_expert {
+                        int il;
+                        int ex;
+                        float score;
+                    };
+                    std::vector<global_expert> all_experts;
+                    all_experts.reserve(n_layers * n_experts);
+
+                    std::vector<std::vector<float>> layer_scores(n_layers, std::vector<float>(n_experts, 0.0f));
+
+                    for (int il = 0; il < n_layers; ++il) {
+                        const std::vector<std::string> cand_names = {
+                            "blk." + std::to_string(il) + ".ffn_gate_exps.weight",
+                            "blk." + std::to_string(il) + ".ffn_down_exps.weight",
+                            "blk." + std::to_string(il) + ".ffn_up_exps.weight",
+                            "blk." + std::to_string(il) + ".ffn_gate_up_exps.weight",
+                            "blk." + std::to_string(il) + ".ffn_gate_exps",
+                            "blk." + std::to_string(il) + ".ffn_down_exps",
+                            "blk." + std::to_string(il) + ".ffn_up_exps",
+                            "blk." + std::to_string(il) + ".ffn_gate_up_exps"
+                        };
+                        bool found = false;
+                        for (const auto & name : cand_names) {
+                            auto it = imatrix_data.entries.find(name);
+                            if (it != imatrix_data.entries.end() && extract_scores(it->second, layer_scores[il])) {
                                 found = true;
                                 break;
                             }
                         }
+                        if (!found) {
+                            const std::string layer_pat = "blk." + std::to_string(il) + ".";
+                            for (const auto & kv : imatrix_data.entries) {
+                                if (kv.first.find(layer_pat) != std::string::npos &&
+                                    kv.first.find("_exps") != std::string::npos &&
+                                    extract_scores(kv.second, layer_scores[il])) {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (found) {
+                            matched_layers++;
+                        }
+                        for (int ex = 0; ex < n_experts; ++ex) {
+                            all_experts.push_back({ il, ex, layer_scores[il][ex] });
+                        }
                     }
-                    std::vector<int> rank(n_experts);
-                    for (int ex = 0; ex < n_experts; ++ex) {
-                        rank[ex] = ex;
-                    }
-                    if (found) {
-                        matched_layers++;
-                        std::stable_sort(rank.begin(), rank.end(), [&](int a, int b) {
-                            return scores[a] > scores[b];
+
+                    if (matched_layers > 0 && target_budget_bytes > 0) {
+                        loaded_imatrix = true;
+                        std::stable_sort(all_experts.begin(), all_experts.end(), [](const global_expert & a, const global_expert & b) {
+                            return a.score > b.score;
                         });
+
+                        // Guarantee a minimum floor of 2 experts per layer so no layer is completely starved
+                        const int min_per_layer = std::min(2, n_experts);
+                        std::vector<std::vector<int>> selected_hot(n_layers);
+                        std::vector<std::vector<bool>> is_hot(n_layers, std::vector<bool>(n_experts, false));
+
+                        size_t allocated_bytes = 0;
+                        size_t floor_bytes = 0;
+                        for (int il = 0; il < n_layers; ++il) {
+                            floor_bytes += (size_t) min_per_layer * layer_expert_bytes[il];
+                        }
+
+                        if (target_budget_bytes >= floor_bytes) {
+                            for (int il = 0; il < n_layers; ++il) {
+                                std::vector<int> local_rank(n_experts);
+                                for (int ex = 0; ex < n_experts; ++ex) local_rank[ex] = ex;
+                                std::stable_sort(local_rank.begin(), local_rank.end(), [&](int a, int b) {
+                                    return layer_scores[il][a] > layer_scores[il][b];
+                                });
+                                for (int p = 0; p < min_per_layer; ++p) {
+                                    int ex = local_rank[p];
+                                    selected_hot[il].push_back(ex);
+                                    is_hot[il][ex] = true;
+                                    allocated_bytes += layer_expert_bytes[il];
+                                }
+                            }
+                        }
+
+                        // Greedily pack remaining budget from global sorted list
+                        for (size_t i = 0; i < all_experts.size(); ++i) {
+                            const auto & ge = all_experts[i];
+                            if (!is_hot[ge.il][ge.ex]) {
+                                const size_t sz = layer_expert_bytes[ge.il];
+                                if (allocated_bytes + sz <= target_budget_bytes) {
+                                    selected_hot[ge.il].push_back(ge.ex);
+                                    is_hot[ge.il][ge.ex] = true;
+                                    allocated_bytes += sz;
+                                }
+                            }
+                        }
+
+                        int min_hot = n_experts;
+                        int max_hot = 0;
+                        int total_hot = 0;
+
+                        for (int il = 0; il < n_layers; ++il) {
+                            layer_nve[il] = (int) selected_hot[il].size();
+                            min_hot = std::min(min_hot, layer_nve[il]);
+                            max_hot = std::max(max_hot, layer_nve[il]);
+                            total_hot += layer_nve[il];
+
+                            int pos = 0;
+                            for (int ex : selected_hot[il]) {
+                                expert_order[il * n_experts + pos++] = ex;
+                            }
+                            std::vector<int> cold_rank;
+                            for (int ex = 0; ex < n_experts; ++ex) {
+                                if (!is_hot[il][ex]) {
+                                    cold_rank.push_back(ex);
+                                }
+                            }
+                            std::stable_sort(cold_rank.begin(), cold_rank.end(), [&](int a, int b) {
+                                return layer_scores[il][a] > layer_scores[il][b];
+                            });
+                            for (int ex : cold_rank) {
+                                expert_order[il * n_experts + pos++] = ex;
+                            }
+                        }
+
+                        if (!all_experts.empty()) {
+                            const float global_max = all_experts.front().score;
+                            const float global_min = all_experts.back().score;
+                            const float diff = global_max - global_min;
+                            for (int il = 0; il < n_layers; ++il) {
+                                for (int ex = 0; ex < n_experts; ++ex) {
+                                    float s = layer_scores[il][ex];
+                                    layer_scores_norm[il * n_experts + ex] = diff > 1e-6f ? (s - global_min) / diff : 0.5f;
+                                }
+                            }
+                        }
+
+                        COM_INF("expert tier: packed %d experts into %.2f / %.2f MiB VRAM budget across %d layers (min: %d, max: %d, avg: %.1f)\n",
+                            total_hot, (double) allocated_bytes / (1024.0 * 1024.0),
+                            (double) target_budget_bytes / (1024.0 * 1024.0),
+                            n_layers, min_hot, max_hot, (float) total_hot / (float) n_layers);
                     }
-                    for (int ex = 0; ex < n_experts; ++ex) {
-                        expert_order[il * n_experts + ex] = rank[ex];
+
+                    COM_INF("expert tier: loaded imatrix '%s' (%d/%d layers matched, %d experts)\n",
+                        params.expert_imatrix.c_str(), matched_layers, n_layers, n_experts);
+                } else {
+                    COM_WRN("expert tier: failed to load imatrix '%s', using default expert ordering\n",
+                        params.expert_imatrix.c_str());
+                }
+            }
+
+            if (!loaded_imatrix) {
+                // Fallback: distribute budget uniformly across layers round-robin
+                size_t allocated_bytes = 0;
+                bool added = true;
+                while (added) {
+                    added = false;
+                    for (int il = 0; il < n_layers; ++il) {
+                        if (layer_nve[il] < n_experts && allocated_bytes + layer_expert_bytes[il] <= target_budget_bytes) {
+                            layer_nve[il]++;
+                            allocated_bytes += layer_expert_bytes[il];
+                            added = true;
+                        }
                     }
                 }
-                COM_INF("expert tier: loaded imatrix '%s' (%d/%d layers matched, %d experts)\n",
-                    params.expert_imatrix.c_str(), matched_layers, n_layers, n_experts);
-            } else {
-                COM_WRN("expert tier: failed to load imatrix '%s', using default expert ordering\n",
-                    params.expert_imatrix.c_str());
+                for (int il = 0; il < n_layers; ++il) {
+                    for (int ex = 0; ex < n_experts; ++ex) {
+                        expert_order[il * n_experts + ex] = ex;
+                    }
+                }
+                int total_hot = 0;
+                for (int v : layer_nve) total_hot += v;
+                COM_INF("expert tier: packed %d experts uniformly into %.2f / %.2f MiB VRAM budget across %d layers\n",
+                    total_hot, (double) allocated_bytes / (1024.0 * 1024.0),
+                    (double) target_budget_bytes / (1024.0 * 1024.0), n_layers);
             }
-        }
 
-        llama_model_init_expert_tier(model, params.n_vram_experts,
-            expert_order.empty() ? nullptr : expert_order.data(), expert_order.size(),
-            params.expert_target_p);
+            if (params.expert_target_p_min > params.expert_target_p_max) {
+                std::swap(params.expert_target_p_min, params.expert_target_p_max);
+            }
+
+            if (params.expert_target_p_min != params.expert_target_p_max) {
+                COM_INF("expert tier: dynamic early exit enabled: range [%.2f, %.2f] based on global expert ranking\n",
+                    params.expert_target_p_min, params.expert_target_p_max);
+            } else {
+                COM_INF("expert tier: target-p fixed at %.2f\n", params.expert_target_p_min);
+            }
+
+            llama_model_init_expert_tier(model,
+                expert_order.data(), expert_order.size(),
+                layer_nve.data(),
+                params.expert_target_p_min,
+                params.expert_target_p_max,
+                layer_scores_norm.data());
+        }
     }
 
     if (model_only) {

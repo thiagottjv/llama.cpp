@@ -15,19 +15,19 @@ struct llama_model;
 // - The two results are added together in build_moe_ffn
 
 // Initialize expert tier for the given model.
-// n_vram_experts: number of experts per layer to keep in VRAM.
 // layer_expert_order: optional per-layer ranking of expert IDs (descending importance).
-// target_p: target cumulative routing probability mass for active experts (default: 0.85).
+// layer_hot_s: number of hot experts allocated per layer.
+// target_p_min, target_p_max: cumulative probability range (equal for fixed target, default: 0.85).
+// layer_scores_norm: per-layer normalized global scores [0.0, 1.0] for active experts.
 bool llama_expert_tier_init(struct llama_model * model,
-                            int32_t n_vram_experts,
-                            const std::vector<std::vector<int>> & layer_expert_order = {},
-                            float target_p = 0.85f);
+                            const std::vector<std::vector<int>> & layer_expert_order,
+                            const std::vector<int> & layer_hot_s,
+                            float target_p_min = 0.85f,
+                            float target_p_max = 0.85f,
+                            const std::vector<std::vector<float>> & layer_scores_norm = {});
 
 // Clear and free all expert tier structures and VRAM buffers.
 void llama_expert_tier_free();
-
-// Check if expert weight tensor w is registered in the expert tier.
-bool llama_expert_tier_has(struct ggml_tensor * w);
 
 // Drop-in hook called from build_lora_mm_id.
 // Returns hot GPU result (or hot+cold if not fused).
@@ -53,7 +53,16 @@ struct ggml_tensor * llama_expert_tier_end_fused(struct ggml_context * ctx,
                                                  struct ggml_tensor  * weights,
                                                  int32_t               act);
 
-// Update dynamic expert cache based on activation counts.
-// Swaps up to max_swaps cold experts with hot experts per layer.
-// Returns total number of expert swaps executed.
-int32_t llama_expert_tier_update(int32_t max_swaps = 1);
+// Update dynamic expert cache based on activation counts globally across all layers.
+// swap_frac: max fraction of total VRAM experts to swap across the model (default: 0.10f).
+// attenuation: EMA attenuation rate (default: 0.15f, decay = 1 - attenuation).
+// Returns total number of expert swaps executed immediately.
+int32_t llama_expert_tier_update(float swap_frac = 0.10f, float attenuation = 0.15f);
+
+// Drain up to max_swaps from the pending swap queue (max_swaps <= 0 drains all).
+// Returns number of swaps executed.
+int32_t llama_expert_tier_drain_queue(int max_swaps = 1);
+
+// Returns current number of pending expert swaps in queue.
+size_t llama_expert_tier_queue_size();
+

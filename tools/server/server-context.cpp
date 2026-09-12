@@ -1302,7 +1302,7 @@ private:
 
             slot.callback_on_release = [this](int id_slot) {
                 queue_tasks.pop_deferred_task(id_slot);
-                if (params_base.expert_swap_max > 0 && model_tgt) {
+                if (params_base.expert_swap_max > 0.0f && model_tgt) {
                     bool any_processing = false;
                     for (const auto & s : slots) {
                         if (s.is_processing()) {
@@ -1311,7 +1311,8 @@ private:
                         }
                     }
                     if (!any_processing) {
-                        llama_model_expert_tier_update(model_tgt, params_base.expert_swap_max);
+                        llama_model_expert_tier_update(model_tgt, params_base.expert_swap_max, params_base.expert_attenuation);
+                        llama_model_expert_tier_drain_queue(model_tgt, 0);
                     }
                 }
             };
@@ -3905,8 +3906,8 @@ private:
             }
 
             if (slot.print_timings_tg()) {
-                if (params_base.expert_swap_max > 0 && model_tgt) {
-                    llama_model_expert_tier_update(model_tgt, params_base.expert_swap_max);
+                if (params_base.expert_swap_max > 0.0f && model_tgt) {
+                    llama_model_expert_tier_update(model_tgt, params_base.expert_swap_max, params_base.expert_attenuation);
                 }
             }
         });
@@ -4035,8 +4036,8 @@ private:
             }
 
             if (slot.print_timings_tg()) {
-                if (params_base.expert_swap_max > 0 && model_tgt) {
-                    llama_model_expert_tier_update(model_tgt, params_base.expert_swap_max);
+                if (params_base.expert_swap_max > 0.0f && model_tgt) {
+                    llama_model_expert_tier_update(model_tgt, params_base.expert_swap_max, params_base.expert_attenuation);
                 }
             }
 

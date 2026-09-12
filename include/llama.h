@@ -1637,16 +1637,30 @@ extern "C" {
 
     LLAMA_API bool llama_model_init_expert_tier(
             struct llama_model * model,
-            int32_t              n_vram_experts,
             const int32_t      * expert_order,
             size_t               n_expert_order,
-            float                target_p);
+            const int32_t      * layer_hot_s,
+            float                target_p_min,
+            float                target_p_max,
+            const float        * layer_scores_norm);
 
     LLAMA_API void llama_model_free_expert_tier(void);
 
     LLAMA_API int32_t llama_model_expert_tier_update(
             struct llama_model * model,
-            int32_t              max_swaps);
+            float                swap_frac,
+            float                attenuation);
+
+    LLAMA_API int32_t llama_model_expert_tier_drain_queue(
+            struct llama_model * model,
+            int                  max_swaps);
+
+    LLAMA_API size_t llama_model_expert_tier_queue_size(
+            struct llama_model * model);
+
+    LLAMA_API size_t llama_model_layer_expert_bytes(
+            const struct llama_model * model,
+            int32_t                    il);
 
 #ifdef __cplusplus
 }

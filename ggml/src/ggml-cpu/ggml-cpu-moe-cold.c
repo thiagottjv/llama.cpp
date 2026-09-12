@@ -65,15 +65,21 @@ static uint64_t moe_cold_active_slot_mask(
         const struct ggml_tensor * ids,
         const int32_t * cold_mask,
         const struct ggml_tensor * weights,
+        const struct ggml_tensor * scores,
         int64_t t,
         int n_ids,
         int n_as,
-        float target_p) {
+        float target_p_min,
+        float target_p_max) {
     float gpu_mass = 0.0f;
     int n_cold = 0;
     struct cold_slot_info cold_slots[64];
 
     const int max_ids = n_ids > 0 ? (n_ids < 64 ? n_ids : 64) : 1;
+
+    float weighted_score_sum = 0.0f;
+    float total_w = 0.0f;
+    const float * exp_scores = scores ? (const float *) scores->data : NULL;
 
     for (int id = 0; id < max_ids; id++) {
         const int32_t e = *(const int32_t *) ((const char *) ids->data + t*ids->nb[1] + id*ids->nb[0]);
@@ -83,6 +89,10 @@ static uint64_t moe_cold_active_slot_mask(
         float w = 1.0f / (float) max_ids;
         if (weights) {
             w = *(const float *) ((const char *) weights->data + t*weights->nb[2] + id*weights->nb[1]);
+        }
+        if (exp_scores) {
+            weighted_score_sum += w * exp_scores[e];
+            total_w += w;
         }
         if (cold_mask[e] == 0) {
             gpu_mass += w;
@@ -97,13 +107,24 @@ static uint64_t moe_cold_active_slot_mask(
         return 0;
     }
 
-    // if target_p is <= 0.0f or gpu mass already reaches target_p, CPU computes zero experts
-    if (target_p <= 0.0f || gpu_mass >= target_p) {
+    // Dynamic early exit interpolation based on global expert scores (fixed when min == max)
+    float effective_target_p = target_p_max;
+    if (target_p_max > target_p_min && exp_scores && total_w > 0.0f) {
+        float avg_score = weighted_score_sum / total_w;
+        if (avg_score < 0.0f) avg_score = 0.0f;
+        if (avg_score > 1.0f) avg_score = 1.0f;
+        effective_target_p = target_p_max - avg_score * (target_p_max - target_p_min);
+    } else {
+        effective_target_p = target_p_min;
+    }
+
+    // if effective_target_p is <= 0.0f or gpu mass already reaches effective_target_p, CPU computes zero experts
+    if (effective_target_p <= 0.0f || gpu_mass >= effective_target_p) {
         return 0;
     }
 
-    // if target_p >= 1.0f, compute all cold experts
-    if (target_p >= 1.0f) {
+    // if effective_target_p >= 1.0f, compute all cold experts
+    if (effective_target_p >= 1.0f) {
         uint64_t mask = 0;
         for (int i = 0; i < n_cold; i++) {
             mask |= (1ULL << cold_slots[i].id);
@@ -126,13 +147,13 @@ static uint64_t moe_cold_active_slot_mask(
         }
     }
 
-    // select top cold experts until cumulative mass (gpu + cpu) reaches target_p
+    // select top cold experts until cumulative mass (gpu + cpu) reaches effective_target_p
     uint64_t mask = 0;
     float curr_mass = gpu_mass;
     for (int i = 0; i < n_cold; i++) {
         mask |= (1ULL << cold_slots[i].id);
         curr_mass += cold_slots[i].weight;
-        if (curr_mass >= target_p) {
+        if (curr_mass >= effective_target_p) {
             break;
         }
     }
@@ -154,8 +175,10 @@ void ggml_compute_forward_moe_cold(
     const struct ggml_tensor * mask   = dst->src[5];
     int32_t * counts = dst->src[6] ? (int32_t *) dst->src[6]->data : NULL;
     const struct ggml_tensor * weights = dst->src[7];
-    const int32_t act = ggml_get_op_params_i32(dst, 0);
-    const float target_p = ggml_get_op_params_f32(dst, 1);
+    const struct ggml_tensor * scores  = dst->src[8];
+    const int32_t act          = ggml_get_op_params_i32(dst, 0);
+    const float   target_p_min = ggml_get_op_params_f32(dst, 1);
+    const float   target_p_max = ggml_get_op_params_f32(dst, 2);
 
     const int32_t * cold_mask = (const int32_t *) mask->data;
 
@@ -179,7 +202,7 @@ void ggml_compute_forward_moe_cold(
     // early check: skip CPU execution if no cold experts are selected
     bool has_cold = false;
     for (int64_t t = 0; t < n_tokens; t++) {
-        if (moe_cold_active_slot_mask(ids, cold_mask, weights, t, n_ids, n_as, target_p) != 0) {
+        if (moe_cold_active_slot_mask(ids, cold_mask, weights, scores, t, n_ids, n_as, target_p_min, target_p_max) != 0) {
             has_cold = true;
             break;
         }
@@ -246,7 +269,7 @@ void ggml_compute_forward_moe_cold(
         memset(matrix_row_counts, 0, n_as*sizeof(int64_t));
 
         for (int64_t t = 0; t < n_tokens; t++) {
-            const uint64_t active_mask = moe_cold_active_slot_mask(ids, cold_mask, weights, t, n_ids, n_as, target_p);
+            const uint64_t active_mask = moe_cold_active_slot_mask(ids, cold_mask, weights, scores, t, n_ids, n_as, target_p_min, target_p_max);
 
             for (int id = 0; id < n_ids; id++) {
                 const int32_t e = *(const int32_t *) ((const char *) ids->data + t*ids->nb[1] + id*ids->nb[0]);

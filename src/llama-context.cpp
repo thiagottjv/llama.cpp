@@ -11,6 +11,7 @@
 #include "llama-model.h"
 #include "llama-ext.h"
 #include "llama-sampler.h"
+#include "llama-expert-tier.h"
 #include "llama.h"
 
 #include <cinttypes>
@@ -4247,6 +4248,8 @@ int32_t llama_encode(
 int32_t llama_decode(
         llama_context * ctx,
           llama_batch   batch) {
+    llama_expert_tier_drain_queue(1);
+
     const int ret = ctx->decode(batch);
     if (ret != 0 && ret != 1) {
         LLAMA_LOG_ERROR("%s: failed to decode, ret = %d\n", __func__, ret);

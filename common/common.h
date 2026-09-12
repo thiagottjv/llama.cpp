@@ -526,10 +526,12 @@ struct common_params {
     std::vector<llama_model_kv_override> kv_overrides;
     std::vector<llama_model_tensor_buft_override> tensor_buft_overrides;
 
-    int32_t     n_vram_experts  = 0;     // number of MoE experts per layer to keep in VRAM
-    float       expert_target_p = 0.85f; // target cumulative routing probability mass for active experts
+    int32_t     vram_expert_budget_mb = 0; // VRAM budget in MiB to allocate for hot MoE experts
+    float       expert_target_p_min = 0.85f; // min target cumulative routing probability mass (default: 0.85)
+    float       expert_target_p_max = 0.85f; // max target cumulative routing probability mass (min == max for fixed target)
     std::string expert_imatrix  = "";    // path to imatrix file for expert importance ranking
-    int32_t     expert_swap_max = 1;     // max dynamic expert swaps per layer between requests (0 to disable)
+    float       expert_swap_max = 0.10f; // max dynamic expert swaps fraction of total VRAM experts (0 to disable)
+    float       expert_attenuation = 0.15f; // expert EMA attenuation rate (0.0 to 1.0, decay = 1 - rate)
 
     bool lora_init_without_apply = false; // only load lora to memory, but do not apply it to ctx (user can manually apply lora later using llama_adapter_lora_apply)
     std::vector<common_adapter_lora_info> lora_adapters; // lora adapter path with user defined scale

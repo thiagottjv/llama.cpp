@@ -2,14 +2,15 @@
 #include "llama-model.h"
 #include "llama-impl.h"
 #include "ggml-backend.h"
-#include "ggml-alloc.h"
 #include "ggml-cpp.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -17,10 +18,11 @@
 
 namespace {
     struct tier_entry {
-        ggml_tensor * dst_hot   = nullptr;
-        ggml_tensor * hot_lut   = nullptr;
-        ggml_tensor * cold_mask = nullptr;
-        ggml_tensor * counts    = nullptr;
+        ggml_tensor * dst_hot    = nullptr;
+        ggml_tensor * hot_lut    = nullptr;
+        ggml_tensor * cold_mask  = nullptr;
+        ggml_tensor * counts     = nullptr;
+        ggml_tensor * exp_scores = nullptr;
     };
 
     struct layer_tier {
@@ -30,21 +32,36 @@ namespace {
 
         std::vector<ggml_tensor *> src_tensors;
         std::vector<ggml_tensor *> dst_hots;
-        ggml_tensor * hot_lut   = nullptr;
-        ggml_tensor * cold_mask = nullptr;
-        ggml_tensor * counts    = nullptr;
+        ggml_tensor * hot_lut    = nullptr;
+        ggml_tensor * cold_mask  = nullptr;
+        ggml_tensor * counts     = nullptr;
+        ggml_tensor * exp_scores = nullptr;
 
         std::vector<int32_t> slot_to_expert;
         std::vector<float>   expert_scores;
+        std::vector<float>   expert_scores_norm;
         std::vector<int32_t> hot_lut_cpu;
         std::vector<int32_t> cold_mask_cpu;
+    };
+
+    struct candidate_swap {
+        int layer_idx;
+        int slot_p;
+        int e_in;
+        int e_out;
+        float cold_score;
+        float hot_score;
+        float gain;
     };
 
     std::mutex g_mtx;
     std::unordered_map<ggml_tensor *, tier_entry> g_table;
     std::vector<layer_tier> g_layers;
-    bool  g_fused_active = false;
-    float g_target_p = 0.85f;
+    std::deque<candidate_swap> g_swap_queue;
+    std::atomic<bool> g_has_pending_swaps{false};
+    thread_local bool g_fused_active = false;
+    float g_target_p_min = 0.85f;
+    float g_target_p_max = 0.85f;
 
     std::vector<ggml_context_ptr>        g_ctxs;
     std::vector<ggml_backend_buffer_ptr> g_bufs;
@@ -54,14 +71,11 @@ void llama_expert_tier_free() {
     std::lock_guard<std::mutex> lk(g_mtx);
     g_table.clear();
     g_layers.clear();
+    g_swap_queue.clear();
+    g_has_pending_swaps.store(false, std::memory_order_relaxed);
     g_ctxs.clear();
     g_bufs.clear();
     g_fused_active = false;
-}
-
-bool llama_expert_tier_has(struct ggml_tensor * w) {
-    std::lock_guard<std::mutex> lk(g_mtx);
-    return g_table.find(w) != g_table.end();
 }
 
 static ggml_tensor * remap_ids(ggml_context * ctx,
@@ -73,6 +87,20 @@ static ggml_tensor * remap_ids(ggml_context * ctx,
         ggml_cont(ctx, selected), n_expert_used * n_tokens);
     ggml_tensor * r = ggml_get_rows(ctx, lut, flat_ids);
     return ggml_reshape_2d(ctx, r, n_expert_used, n_tokens);
+}
+
+static void copy_expert_tensor_slot(ggml_tensor * src, ggml_tensor * dst, int ex_src, int slot_dst) {
+    const size_t slot_bytes = src->nb[2];
+    const char * src_data = (const char *) ggml_get_data(src);
+
+    if (src_data) {
+        ggml_backend_tensor_set(dst, src_data + (size_t) ex_src * slot_bytes,
+                                (size_t) slot_dst * slot_bytes, slot_bytes);
+    } else {
+        std::vector<uint8_t> tmp(slot_bytes);
+        ggml_backend_tensor_get(src, tmp.data(), (size_t) ex_src * slot_bytes, slot_bytes);
+        ggml_backend_tensor_set(dst, tmp.data(), (size_t) slot_dst * slot_bytes, slot_bytes);
+    }
 }
 
 struct ggml_tensor * llama_expert_tier_build(struct ggml_context * ctx,
@@ -142,19 +170,23 @@ struct ggml_tensor * llama_expert_tier_end_fused(struct ggml_context * ctx,
         ent = it->second;
     }
 
-    return ggml_moe_cold(ctx, gate_w, up_w, down_w, x, ids, ent.cold_mask, ent.counts, weights, act, g_target_p);
+    return ggml_moe_cold(ctx, gate_w, up_w, down_w, x, ids, ent.cold_mask, ent.counts, weights, act,
+                         g_target_p_min, g_target_p_max, ent.exp_scores);
 }
 
 bool llama_expert_tier_init(struct llama_model * model,
-                            int32_t n_vram_experts,
                             const std::vector<std::vector<int>> & layer_expert_order,
-                            float target_p) {
-    if (!model || n_vram_experts <= 0) {
+                            const std::vector<int> & layer_hot_s,
+                            float target_p_min,
+                            float target_p_max,
+                            const std::vector<std::vector<float>> & layer_scores_norm) {
+    if (!model || layer_hot_s.empty()) {
         return false;
     }
 
     llama_expert_tier_free();
-    g_target_p = target_p;
+    g_target_p_min = target_p_min;
+    g_target_p_max = target_p_max;
 
     // Look for GPU device in model
     ggml_backend_dev_t gpu_dev = nullptr;
@@ -188,7 +220,7 @@ bool llama_expert_tier_init(struct llama_model * model,
         }
 
         const int n_experts = (int) exps_tensors[0]->ne[2];
-        const int hot_s = std::min((int) n_vram_experts, n_experts);
+        const int hot_s = (il < (int) layer_hot_s.size()) ? std::min(layer_hot_s[il], n_experts) : 0;
         if (hot_s <= 0) {
             continue;
         }
@@ -214,7 +246,7 @@ bool llama_expert_tier_init(struct llama_model * model,
         }
 
         ggml_init_params p_cpu = {
-            /* .mem_size   = */ ggml_tensor_overhead() * 2,
+            /* .mem_size   = */ ggml_tensor_overhead() * 4,
             /* .mem_buffer = */ nullptr,
             /* .no_alloc   = */ true,
         };
@@ -231,9 +263,10 @@ bool llama_expert_tier_init(struct llama_model * model,
             ggml_set_name(dst_hots[i], (std::string(src->name) + ".hot").c_str());
         }
 
-        ggml_tensor * hot_lut   = ggml_new_tensor_2d(ctx_gpu.get(), GGML_TYPE_I32, 1, n_experts);
-        ggml_tensor * cold_mask = ggml_new_tensor_1d(ctx_cpu.get(), GGML_TYPE_I32, n_experts);
-        ggml_tensor * counts    = ggml_new_tensor_1d(ctx_cpu.get(), GGML_TYPE_I32, n_experts + 1);
+        ggml_tensor * hot_lut    = ggml_new_tensor_2d(ctx_gpu.get(), GGML_TYPE_I32, 1, n_experts);
+        ggml_tensor * cold_mask  = ggml_new_tensor_1d(ctx_cpu.get(), GGML_TYPE_I32, n_experts);
+        ggml_tensor * counts     = ggml_new_tensor_1d(ctx_cpu.get(), GGML_TYPE_I32, n_experts + 1);
+        ggml_tensor * exp_scores = ggml_new_tensor_1d(ctx_cpu.get(), GGML_TYPE_F32, n_experts);
 
         ggml_backend_buffer_t buf_gpu = ggml_backend_alloc_ctx_tensors_from_buft(ctx_gpu.get(), gpu_buft);
         if (!buf_gpu) {
@@ -254,24 +287,8 @@ bool llama_expert_tier_init(struct llama_model * model,
 
         // Copy top-S expert weights
         for (size_t i = 0; i < exps_tensors.size(); ++i) {
-            auto * src = exps_tensors[i];
-            auto * dst = dst_hots[i];
-            const size_t slot_bytes = ggml_nbytes(src) / (size_t) src->ne[2];
-            const char * src_data = (const char *) ggml_get_data(src);
-
-            if (src_data) {
-                for (int p = 0; p < hot_s; ++p) {
-                    const int ex = rank[p];
-                    ggml_backend_tensor_set(dst, src_data + (size_t) ex * slot_bytes,
-                                            (size_t) p * slot_bytes, slot_bytes);
-                }
-            } else {
-                std::vector<uint8_t> tmp(slot_bytes);
-                for (int p = 0; p < hot_s; ++p) {
-                    const int ex = rank[p];
-                    ggml_backend_tensor_get(src, tmp.data(), (size_t) ex * slot_bytes, slot_bytes);
-                    ggml_backend_tensor_set(dst, tmp.data(), (size_t) p * slot_bytes, slot_bytes);
-                }
+            for (int p = 0; p < hot_s; ++p) {
+                copy_expert_tensor_slot(exps_tensors[i], dst_hots[i], rank[p], p);
             }
         }
 
@@ -287,14 +304,21 @@ bool llama_expert_tier_init(struct llama_model * model,
         ggml_backend_tensor_set(hot_lut, h_lut.data(), 0, n_experts * sizeof(int32_t));
         ggml_backend_tensor_set(cold_mask, c_mask.data(), 0, n_experts * sizeof(int32_t));
 
+        std::vector<float> norm_init(n_experts, 0.5f);
+        if (il < (int) layer_scores_norm.size() && (int) layer_scores_norm[il].size() == n_experts) {
+            norm_init = layer_scores_norm[il];
+        }
+        ggml_backend_tensor_set(exp_scores, norm_init.data(), 0, n_experts * sizeof(float));
+
         {
             std::lock_guard<std::mutex> lk(g_mtx);
             for (size_t i = 0; i < exps_tensors.size(); ++i) {
                 tier_entry ent;
-                ent.dst_hot   = dst_hots[i];
-                ent.hot_lut   = hot_lut;
-                ent.cold_mask = cold_mask;
-                ent.counts    = counts;
+                ent.dst_hot    = dst_hots[i];
+                ent.hot_lut    = hot_lut;
+                ent.cold_mask  = cold_mask;
+                ent.counts     = counts;
+                ent.exp_scores = exp_scores;
                 g_table[exps_tensors[i]] = ent;
                 total_tiered_tensors++;
             }
@@ -308,11 +332,13 @@ bool llama_expert_tier_init(struct llama_model * model,
             lt.hot_lut = hot_lut;
             lt.cold_mask = cold_mask;
             lt.counts = counts;
+            lt.exp_scores = exp_scores;
             lt.slot_to_expert.resize(hot_s);
             for (int p = 0; p < hot_s; ++p) {
                 lt.slot_to_expert[p] = rank[p];
             }
             lt.expert_scores.assign(n_experts, 0.0f);
+            lt.expert_scores_norm = norm_init;
             lt.hot_lut_cpu = h_lut;
             lt.cold_mask_cpu = c_mask;
             g_layers.push_back(std::move(lt));
@@ -324,14 +350,91 @@ bool llama_expert_tier_init(struct llama_model * model,
         g_bufs.push_back(ggml_backend_buffer_ptr(buf_cpu));
     }
 
-    LLAMA_LOG_INFO("%s: initialized expert tier with %d VRAM experts per layer (%d tensors offloaded, target p: %.2f)\n",
-        __func__, n_vram_experts, total_tiered_tensors, target_p);
+    if (target_p_min != target_p_max) {
+        LLAMA_LOG_INFO("%s: initialized expert tier (%d tensors offloaded, dynamic target p: [%.2f, %.2f])\n",
+            __func__, total_tiered_tensors, target_p_min, target_p_max);
+    } else {
+        LLAMA_LOG_INFO("%s: initialized expert tier (%d tensors offloaded, target p: %.2f)\n",
+            __func__, total_tiered_tensors, target_p_min);
+    }
 
     return total_tiered_tensors > 0;
 }
 
-int32_t llama_expert_tier_update(int32_t max_swaps) {
-    if (max_swaps <= 0) {
+static bool execute_single_swap_internal(const candidate_swap & cs) {
+    if (cs.layer_idx < 0 || cs.layer_idx >= (int) g_layers.size()) {
+        return false;
+    }
+    auto & lt = g_layers[cs.layer_idx];
+    const int e_out = cs.e_out;
+    const int e_in  = cs.e_in;
+    const int p     = cs.slot_p;
+
+    // Validate that slot_p still holds e_out and e_in is still cold
+    if (p < 0 || p >= lt.hot_s || lt.slot_to_expert[p] != e_out || lt.cold_mask_cpu[e_in] != 1) {
+        return false;
+    }
+
+    for (size_t i = 0; i < lt.src_tensors.size(); ++i) {
+        copy_expert_tensor_slot(lt.src_tensors[i], lt.dst_hots[i], e_in, p);
+    }
+
+    lt.hot_lut_cpu[e_out] = lt.hot_s;
+    lt.hot_lut_cpu[e_in]  = p;
+
+    lt.cold_mask_cpu[e_out] = 1;
+    lt.cold_mask_cpu[e_in]  = 0;
+
+    lt.slot_to_expert[p] = e_in;
+
+    const int32_t val_sentinel = lt.hot_s;
+    const int32_t val_p = p;
+    ggml_backend_tensor_set(lt.hot_lut, &val_sentinel, (size_t) e_out * sizeof(int32_t), sizeof(int32_t));
+    ggml_backend_tensor_set(lt.hot_lut, &val_p,        (size_t) e_in  * sizeof(int32_t), sizeof(int32_t));
+
+    const int32_t val_one  = 1;
+    const int32_t val_zero = 0;
+    ggml_backend_tensor_set(lt.cold_mask, &val_one,  (size_t) e_out * sizeof(int32_t), sizeof(int32_t));
+    ggml_backend_tensor_set(lt.cold_mask, &val_zero, (size_t) e_in  * sizeof(int32_t), sizeof(int32_t));
+
+    LLAMA_LOG_INFO("%s: L%d swapped expert %d (score %.1f) -> slot %d (evicted %d, score %.1f, gain: +%.1f)\n",
+                   __func__, lt.il, e_in, cs.cold_score, p, e_out, cs.hot_score, cs.gain);
+    return true;
+}
+
+int32_t llama_expert_tier_drain_queue(int max_swaps) {
+    if (!g_has_pending_swaps.load(std::memory_order_relaxed)) {
+        return 0;
+    }
+
+    std::lock_guard<std::mutex> lk(g_mtx);
+    if (g_swap_queue.empty()) {
+        g_has_pending_swaps.store(false, std::memory_order_relaxed);
+        return 0;
+    }
+
+    int executed = 0;
+    const bool drain_all = (max_swaps <= 0);
+    while (!g_swap_queue.empty() && (drain_all || executed < max_swaps)) {
+        candidate_swap cs = g_swap_queue.front();
+        g_swap_queue.pop_front();
+        if (execute_single_swap_internal(cs)) {
+            executed++;
+        }
+    }
+    if (g_swap_queue.empty()) {
+        g_has_pending_swaps.store(false, std::memory_order_relaxed);
+    }
+    return executed;
+}
+
+size_t llama_expert_tier_queue_size() {
+    std::lock_guard<std::mutex> lk(g_mtx);
+    return g_swap_queue.size();
+}
+
+int32_t llama_expert_tier_update(float swap_frac, float attenuation) {
+    if (swap_frac <= 0.0f) {
         return 0;
     }
 
@@ -340,15 +443,23 @@ int32_t llama_expert_tier_update(int32_t max_swaps) {
         return 0;
     }
 
-    LLAMA_LOG_INFO("%s: checking expert tier (max_swaps=%d, %zu layers)\n",
-                   __func__, max_swaps, g_layers.size());
+    int total_vram_experts = 0;
+    for (const auto & lt : g_layers) {
+        total_vram_experts += lt.hot_s;
+    }
+    if (total_vram_experts <= 0) {
+        return 0;
+    }
 
-    int32_t total_swaps = 0;
+    const int global_max_swaps = std::max(1, (int) std::round(swap_frac * (float) total_vram_experts));
+
     int layers_active = 0;
-    const float decay = 0.85f;
+    attenuation = std::max(0.0f, std::min(1.0f, attenuation));
+    const float decay = 1.0f - attenuation;
     const float margin = 0.05f;
     const float min_diff = 1.0f;
 
+    // Step 1: Update EMA scores from access counts for each layer
     for (auto & lt : g_layers) {
         if (!lt.counts || lt.hot_s <= 0 || lt.hot_s >= lt.n_experts) {
             continue;
@@ -366,114 +477,153 @@ int32_t llama_expert_tier_update(int32_t max_swaps) {
         ggml_backend_tensor_set(lt.counts, zero.data(), 0, (lt.n_experts + 1) * sizeof(int32_t));
 
         for (int e = 0; e < lt.n_experts; ++e) {
-            lt.expert_scores[e] = lt.expert_scores[e] * decay + (float) cnt[e];
-        }
-
-        for (int sw = 0; sw < max_swaps; ++sw) {
-            int min_p = -1;
-            float min_hot_score = 1e30f;
-            for (int p = 0; p < lt.hot_s; ++p) {
-                const int ex = lt.slot_to_expert[p];
-                if (lt.expert_scores[ex] < min_hot_score) {
-                    min_hot_score = lt.expert_scores[ex];
-                    min_p = p;
-                }
-            }
-
-            int max_cold_ex = -1;
-            float max_cold_score = -1.0f;
-            for (int ex = 0; ex < lt.n_experts; ++ex) {
-                if (lt.cold_mask_cpu[ex] == 1) {
-                    if (lt.expert_scores[ex] > max_cold_score) {
-                        max_cold_score = lt.expert_scores[ex];
-                        max_cold_ex = ex;
-                    }
-                }
-            }
-
-            if (min_p < 0 || max_cold_ex < 0) {
-                break;
-            }
-
-            const float thresh = min_hot_score * (1.0f + margin) + min_diff;
-
-            // Log diagnostic info for layer 0 or layer 24 (midpoint)
-            if (sw == 0 && (lt.il == 0 || lt.il == (int) g_layers.size() / 2)) {
-                LLAMA_LOG_INFO("%s: L%d stats: tokens=%d, min_hot=e%d(score=%.1f), max_cold=e%d(score=%.1f), thresh=%.1f\n",
-                               __func__, lt.il, cnt[lt.n_experts],
-                               (min_p >= 0 ? lt.slot_to_expert[min_p] : -1), min_hot_score,
-                               max_cold_ex, max_cold_score, thresh);
-            }
-
-            if (max_cold_score <= thresh) {
-                break;
-            }
-
-            const int e_out = lt.slot_to_expert[min_p];
-            const int e_in  = max_cold_ex;
-            const int p     = min_p;
-
-            for (size_t i = 0; i < lt.src_tensors.size(); ++i) {
-                auto * src = lt.src_tensors[i];
-                auto * dst = lt.dst_hots[i];
-                const size_t slot_bytes = ggml_nbytes(src) / (size_t) src->ne[2];
-                const char * src_data = (const char *) ggml_get_data(src);
-
-                if (src_data) {
-                    ggml_backend_tensor_set(dst, src_data + (size_t) e_in * slot_bytes,
-                                            (size_t) p * slot_bytes, slot_bytes);
-                } else {
-                    std::vector<uint8_t> tmp(slot_bytes);
-                    ggml_backend_tensor_get(src, tmp.data(), (size_t) e_in * slot_bytes, slot_bytes);
-                    ggml_backend_tensor_set(dst, tmp.data(), (size_t) p * slot_bytes, slot_bytes);
-                }
-            }
-
-            lt.hot_lut_cpu[e_out] = lt.hot_s;
-            lt.hot_lut_cpu[e_in]  = p;
-
-            lt.cold_mask_cpu[e_out] = 1;
-            lt.cold_mask_cpu[e_in]  = 0;
-
-            lt.slot_to_expert[p] = e_in;
-
-            const int32_t val_sentinel = lt.hot_s;
-            const int32_t val_p = p;
-            ggml_backend_tensor_set(lt.hot_lut, &val_sentinel, (size_t) e_out * sizeof(int32_t), sizeof(int32_t));
-            ggml_backend_tensor_set(lt.hot_lut, &val_p,        (size_t) e_in  * sizeof(int32_t), sizeof(int32_t));
-
-            const int32_t val_one  = 1;
-            const int32_t val_zero = 0;
-            ggml_backend_tensor_set(lt.cold_mask, &val_one,  (size_t) e_out * sizeof(int32_t), sizeof(int32_t));
-            ggml_backend_tensor_set(lt.cold_mask, &val_zero, (size_t) e_in  * sizeof(int32_t), sizeof(int32_t));
-
-            LLAMA_LOG_INFO("%s: layer %d swapped expert %d (score %.1f) -> slot %d (evicted %d, score %.1f)\n",
-                           __func__, lt.il, e_in, max_cold_score, p, e_out, min_hot_score);
-
-            total_swaps++;
+            lt.expert_scores[e] = lt.expert_scores[e] * decay + (float) cnt[e] * attenuation;
         }
     }
 
-    LLAMA_LOG_INFO("%s: cycle complete (layers_active=%d/%zu, swaps=%d)\n",
-                   __func__, layers_active, g_layers.size(), total_swaps);
-
-    if (total_swaps > 0) {
-        LLAMA_LOG_INFO("%s: dynamically swapped %d experts into VRAM\n", __func__, total_swaps);
+    if (layers_active == 0) {
+        return 0;
     }
 
-    return total_swaps;
+    // Update normalized global scores if dynamic early exit is active
+    if (g_target_p_max > g_target_p_min) {
+        float global_min = 1e30f;
+        float global_max = -1e30f;
+        for (const auto & lt : g_layers) {
+            for (float s : lt.expert_scores) {
+                if (s < global_min) global_min = s;
+                if (s > global_max) global_max = s;
+            }
+        }
+        const float diff = global_max - global_min;
+        for (auto & lt : g_layers) {
+            if (!lt.exp_scores) continue;
+            for (int e = 0; e < lt.n_experts; ++e) {
+                lt.expert_scores_norm[e] = diff > 1e-6f ? (lt.expert_scores[e] - global_min) / diff : 0.5f;
+            }
+            ggml_backend_tensor_set(lt.exp_scores, lt.expert_scores_norm.data(), 0, lt.n_experts * sizeof(float));
+        }
+    }
+
+    // Step 2: Form candidate swaps across ALL layers as a whole
+    std::vector<candidate_swap> all_candidates;
+
+    for (size_t l_idx = 0; l_idx < g_layers.size(); ++l_idx) {
+        auto & lt = g_layers[l_idx];
+        if (!lt.counts || lt.hot_s <= 0 || lt.hot_s >= lt.n_experts) {
+            continue;
+        }
+
+        // Sort hot slots by current EMA score ascending
+        struct hot_slot_info {
+            int p;
+            int ex;
+            float score;
+        };
+        std::vector<hot_slot_info> hot_slots;
+        hot_slots.reserve(lt.hot_s);
+        for (int p = 0; p < lt.hot_s; ++p) {
+            const int ex = lt.slot_to_expert[p];
+            hot_slots.push_back({ p, ex, lt.expert_scores[ex] });
+        }
+        std::sort(hot_slots.begin(), hot_slots.end(), [](const hot_slot_info & a, const hot_slot_info & b) {
+            return a.score < b.score;
+        });
+
+        // Collect and sort cold experts by current EMA score descending
+        struct cold_exp_info {
+            int ex;
+            float score;
+        };
+        std::vector<cold_exp_info> cold_exps;
+        for (int ex = 0; ex < lt.n_experts; ++ex) {
+            if (lt.cold_mask_cpu[ex] == 1) {
+                cold_exps.push_back({ ex, lt.expert_scores[ex] });
+            }
+        }
+        std::sort(cold_exps.begin(), cold_exps.end(), [](const cold_exp_info & a, const cold_exp_info & b) {
+            return a.score > b.score;
+        });
+
+        // Match cold experts to hot slots
+        const int max_pairs = std::min((int) hot_slots.size(), (int) cold_exps.size());
+        for (int k = 0; k < max_pairs; ++k) {
+            const float cold_score = cold_exps[k].score;
+            const float hot_score  = hot_slots[k].score;
+            const float thresh     = hot_score * (1.0f + margin) + min_diff;
+
+            if (cold_score > thresh) {
+                all_candidates.push_back({
+                    (int) l_idx,
+                    hot_slots[k].p,
+                    cold_exps[k].ex,
+                    hot_slots[k].ex,
+                    cold_score,
+                    hot_score,
+                    cold_score - hot_score
+                });
+            } else {
+                break;
+            }
+        }
+    }
+
+    if (all_candidates.empty()) {
+        g_swap_queue.clear();
+        g_has_pending_swaps.store(false, std::memory_order_relaxed);
+        return 0;
+    }
+
+    // Step 3: Sort all candidate swaps globally by gain descending
+    std::stable_sort(all_candidates.begin(), all_candidates.end(), [](const candidate_swap & a, const candidate_swap & b) {
+        return a.gain > b.gain;
+    });
+
+    // Step 4: Populate async swap queue (up to global_max_swaps)
+    g_swap_queue.clear();
+    int count_queued = 0;
+    for (const auto & cs : all_candidates) {
+        if (count_queued >= global_max_swaps) {
+            break;
+        }
+        g_swap_queue.push_back(cs);
+        count_queued++;
+    }
+    g_has_pending_swaps.store(!g_swap_queue.empty(), std::memory_order_release);
+
+    // Step 5: Immediately execute the first swap from queue
+    int executed = 0;
+    if (!g_swap_queue.empty()) {
+        candidate_swap first_swap = g_swap_queue.front();
+        g_swap_queue.pop_front();
+        if (execute_single_swap_internal(first_swap)) {
+            executed++;
+        }
+        if (g_swap_queue.empty()) {
+            g_has_pending_swaps.store(false, std::memory_order_relaxed);
+        }
+    }
+
+    LLAMA_LOG_INFO("%s: global cycle: active_layers=%d/%zu, candidates=%zu, queued=%d, executed=%d (remaining: %zu)\n",
+                   __func__, layers_active, g_layers.size(), all_candidates.size(), count_queued, executed, g_swap_queue.size());
+
+    return executed;
 }
 
 bool llama_model_init_expert_tier(
         struct llama_model * model,
-        int32_t              n_vram_experts,
         const int32_t      * expert_order,
         size_t               n_expert_order,
-        float                target_p) {
+        const int32_t      * layer_hot_s_arr,
+        float                target_p_min,
+        float                target_p_max,
+        const float        * layer_scores_norm) {
     std::vector<std::vector<int>> order;
-    if (model && expert_order && n_expert_order > 0) {
+    std::vector<int> layer_hot_s;
+    std::vector<std::vector<float>> scores_norm;
+    if (model) {
         int n_layers = (int) model->layers.size();
-        if (n_layers > 0) {
+        if (expert_order && n_expert_order > 0 && n_layers > 0) {
             int n_exp_per_layer = (int) (n_expert_order / n_layers);
             order.resize(n_layers);
             for (int il = 0; il < n_layers; ++il) {
@@ -481,15 +631,54 @@ bool llama_model_init_expert_tier(
                                  expert_order + (il + 1) * n_exp_per_layer);
             }
         }
+        if (layer_hot_s_arr && n_layers > 0) {
+            layer_hot_s.assign(layer_hot_s_arr, layer_hot_s_arr + n_layers);
+        }
+        if (layer_scores_norm && n_layers > 0 && expert_order && n_expert_order > 0) {
+            int n_exp_per_layer = (int) (n_expert_order / n_layers);
+            scores_norm.resize(n_layers);
+            for (int il = 0; il < n_layers; ++il) {
+                scores_norm[il].assign(layer_scores_norm + il * n_exp_per_layer,
+                                       layer_scores_norm + (il + 1) * n_exp_per_layer);
+            }
+        }
     }
-    return llama_expert_tier_init(model, n_vram_experts, order, target_p);
+    return llama_expert_tier_init(model, order, layer_hot_s, target_p_min, target_p_max, scores_norm);
 }
 
 void llama_model_free_expert_tier(void) {
     llama_expert_tier_free();
 }
 
-int32_t llama_model_expert_tier_update(struct llama_model * model, int32_t max_swaps) {
+int32_t llama_model_expert_tier_update(struct llama_model * model, float swap_frac, float attenuation) {
     (void) model;
-    return llama_expert_tier_update(max_swaps);
+    return llama_expert_tier_update(swap_frac, attenuation);
+}
+
+int32_t llama_model_expert_tier_drain_queue(struct llama_model * model, int max_swaps) {
+    (void) model;
+    return llama_expert_tier_drain_queue(max_swaps);
+}
+
+size_t llama_model_expert_tier_queue_size(struct llama_model * model) {
+    (void) model;
+    return llama_expert_tier_queue_size();
+}
+
+size_t llama_model_layer_expert_bytes(const struct llama_model * model, int32_t il) {
+    if (!model || il < 0 || il >= (int32_t) model->layers.size()) {
+        return 0;
+    }
+    const auto & layer = model->layers[il];
+    size_t exp_bytes = 0;
+    auto add_exp_tensor = [&](const ggml_tensor * t) {
+        if (t && t->ne[2] > 0) {
+            exp_bytes += ggml_nbytes(t) / (size_t) t->ne[2];
+        }
+    };
+    add_exp_tensor(layer.ffn_gate_exps);
+    add_exp_tensor(layer.ffn_up_exps);
+    add_exp_tensor(layer.ffn_down_exps);
+    add_exp_tensor(layer.ffn_gate_up_exps);
+    return exp_bytes;
 }
