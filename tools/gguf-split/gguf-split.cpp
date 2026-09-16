@@ -36,6 +36,7 @@ enum split_mode : uint8_t {
     MODE_NONE,
     MODE_TENSOR,
     MODE_SIZE,
+    MODE_ISOLATE,
 };
 
 struct split_params {
@@ -45,6 +46,7 @@ struct split_params {
     int n_split_tensors = 128;
     std::string input;
     std::string output;
+    std::string isolate_tensor;
     bool no_tensor_first_split = false;
     bool dry_run = false;
     bool delete_splits = false;
@@ -64,6 +66,7 @@ static void split_print_usage(const char * executable) {
     printf("  --merge                 merge multiple GGUF to a single GGUF\n");
     printf("  --split-max-tensors     max tensors in each split (default: %d)\n", default_params.n_split_tensors);
     printf("  --split-max-size N(M|G) max size per split\n");
+    printf("  --isolate-tensor NAME   place specified tensor in its own split\n");
     printf("  --no-tensor-first-split do not add tensors to the first split (disabled by default)\n");
     printf("  --dry-run               only print out a split plan and exit, without writing any new files\n");
     printf("  --delete-splits         delete the split files during merge to free up disk space WARNING: this option is unsafe and will leave you in an unrecoverable state if something fails during the merge\n");
@@ -149,6 +152,17 @@ static void split_params_parse_ex(int argc, const char ** argv, split_params & p
             }
             params.mode = MODE_SIZE;
             params.n_bytes_split = split_str_to_n_bytes(argv[arg_idx]);
+        } else if (arg == "--isolate-tensor") {
+            if (++arg_idx >= argc) {
+                invalid_param = true;
+                break;
+            }
+            arg_found = true;
+            if (params.mode != MODE_NONE && params.mode != MODE_ISOLATE) {
+                throw std::invalid_argument("error: --isolate-tensor cannot be combined with other split modes");
+            }
+            params.mode = MODE_ISOLATE;
+            params.isolate_tensor = argv[arg_idx];
         } else if (arg == "--delete-splits") {
             arg_found = true;
             params.delete_splits = true;
@@ -253,6 +267,47 @@ struct split_strategy {
             new_ctx_out(true);
         }
 
+        if (params.mode == MODE_ISOLATE) {
+            bool found = false;
+            for (int i = 0; i < n_tensors; ++i) {
+                const char * name = gguf_get_tensor_name(ctx_gguf, i);
+                if (params.isolate_tensor == name) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                fprintf(stderr, "error: tensor '%s' not found in model\n", params.isolate_tensor.c_str());
+                exit(EXIT_FAILURE);
+            }
+
+            for (int i = 0; i < n_tensors; ++i) {
+                const char * name = gguf_get_tensor_name(ctx_gguf, i);
+                if (params.isolate_tensor != name) {
+                    struct ggml_tensor * t = ggml_get_tensor(ctx_meta, name);
+                    gguf_add_tensor(ctx_out, t);
+                }
+            }
+
+            new_ctx_out(false);
+
+            for (int i = 0; i < n_tensors; ++i) {
+                const char * name = gguf_get_tensor_name(ctx_gguf, i);
+                if (params.isolate_tensor == name) {
+                    struct ggml_tensor * t = ggml_get_tensor(ctx_meta, name);
+                    gguf_add_tensor(ctx_out, t);
+                }
+            }
+
+            ctx_outs.push_back(ctx_out);
+
+            for (auto & ctx : ctx_outs) {
+                gguf_set_val_u16(ctx, LLM_KV_SPLIT_COUNT, ctx_outs.size());
+            }
+
+            return;
+        }
+
         // process tensors one by one
         size_t curr_tensors_size = 0; // current size by counting only tensors size (without metadata)
         for (int i = 0; i < n_tensors; ++i) {
@@ -337,8 +392,6 @@ struct split_strategy {
                 const char * t_name = gguf_get_tensor_name(ctx_out, i);
                 struct ggml_tensor * t = ggml_get_tensor(ctx_meta, t_name);
                 auto n_bytes = ggml_nbytes(t);
-                read_buf.resize(n_bytes);
-
                 // calculate offset
                 auto i_tensor_in = gguf_find_tensor(ctx_gguf, t_name); // idx of tensor in the input file
                 auto offset = gguf_get_data_offset(ctx_gguf) + gguf_get_tensor_offset(ctx_gguf, i_tensor_in);
@@ -356,13 +409,18 @@ struct split_strategy {
     }
 
     void copy_file_to_file(std::ifstream & f_in, std::ofstream & f_out, const size_t in_offset, const size_t len) {
-        // TODO: detect OS and use copy_file_range() here for better performance
-        if (read_buf.size() < len) {
-            read_buf.resize(len);
+        const size_t chunk_size = 64 * 1024 * 1024;
+        if (read_buf.size() < chunk_size) {
+            read_buf.resize(chunk_size);
         }
         f_in.seekg(in_offset);
-        f_in.read((char *)read_buf.data(), len);
-        f_out.write((const char *)read_buf.data(), len);
+        size_t remaining = len;
+        while (remaining > 0) {
+            const size_t to_read = std::min(remaining, chunk_size);
+            f_in.read((char *)read_buf.data(), to_read);
+            f_out.write((const char *)read_buf.data(), to_read);
+            remaining -= to_read;
+        }
     }
 };
 
