@@ -1663,11 +1663,23 @@ common_init_result_ptr common_init_from_params(common_params & params, bool mode
                     (double) target_budget_bytes / (1024.0 * 1024.0), n_layers);
             }
 
+            if (params.expert_target_p_min <= 0.0f) {
+                params.expert_target_p_min = 1.0f;
+            }
+            if (params.expert_target_p_max <= 0.0f) {
+                params.expert_target_p_max = 1.0f;
+            }
+
             if (params.expert_target_p_min > params.expert_target_p_max) {
                 std::swap(params.expert_target_p_min, params.expert_target_p_max);
             }
 
-            if (params.expert_target_p_min != params.expert_target_p_max) {
+            if (params.expert_target_p_min >= 1.0f && params.expert_target_p_max >= 1.0f && params.expert_target_p_depth_delta <= 0.0f) {
+                COM_INF("%s", "expert tier: early exit disabled (target-p = 1.0, 100% precision)\n");
+            } else if (params.expert_target_p_depth_delta > 0.0f) {
+                COM_INF("expert tier: layer-aware target-p enabled: range [%.2f, %.2f], depth delta +/-%.2f\n",
+                    params.expert_target_p_min, params.expert_target_p_max, params.expert_target_p_depth_delta);
+            } else if (params.expert_target_p_min != params.expert_target_p_max) {
                 COM_INF("expert tier: dynamic early exit enabled: range [%.2f, %.2f] based on global expert ranking\n",
                     params.expert_target_p_min, params.expert_target_p_max);
             } else {
@@ -1679,7 +1691,8 @@ common_init_result_ptr common_init_from_params(common_params & params, bool mode
                 layer_nve.data(),
                 params.expert_target_p_min,
                 params.expert_target_p_max,
-                layer_scores_norm.data());
+                layer_scores_norm.data(),
+                params.expert_target_p_depth_delta);
         }
     }
 

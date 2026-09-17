@@ -1311,7 +1311,7 @@ private:
                         }
                     }
                     if (!any_processing) {
-                        llama_model_expert_tier_update(model_tgt, params_base.expert_swap_max, params_base.expert_attenuation);
+                        llama_model_expert_tier_update(model_tgt, params_base.expert_swap_max, params_base.expert_attenuation, params_base.expert_imatrix_weight);
                         llama_model_expert_tier_drain_queue(model_tgt, 0);
                     }
                 }
@@ -3907,7 +3907,7 @@ private:
 
             if (slot.print_timings_tg()) {
                 if (params_base.expert_swap_max > 0.0f && model_tgt) {
-                    llama_model_expert_tier_update(model_tgt, params_base.expert_swap_max, params_base.expert_attenuation);
+                    llama_model_expert_tier_update(model_tgt, params_base.expert_swap_max, params_base.expert_attenuation, params_base.expert_imatrix_weight);
                 }
             }
         });
@@ -4037,7 +4037,7 @@ private:
 
             if (slot.print_timings_tg()) {
                 if (params_base.expert_swap_max > 0.0f && model_tgt) {
-                    llama_model_expert_tier_update(model_tgt, params_base.expert_swap_max, params_base.expert_attenuation);
+                    llama_model_expert_tier_update(model_tgt, params_base.expert_swap_max, params_base.expert_attenuation, params_base.expert_imatrix_weight);
                 }
             }
 

@@ -2788,11 +2788,14 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
     ).set_env("LLAMA_ARG_EXPERT_IMATRIX"));
     add_opt(common_arg(
         {"-etp", "--expert-target-p"}, "F",
-        "fixed target cumulative routing probability mass (sets both min and max to same value)",
+        "fixed target cumulative routing probability mass (0.0 to 1.0, default: 1.0; 0 or 1.0 disables early exit)",
         [](common_params & params, const std::string & value) {
-            const float v = std::stof(value);
+            float v = std::stof(value);
             if (v < 0.0f || v > 1.0f) {
                 throw std::invalid_argument("invalid value (must be between 0.0 and 1.0)");
+            }
+            if (v == 0.0f) {
+                v = 1.0f;
             }
             params.expert_target_p_min = v;
             params.expert_target_p_max = v;
@@ -2800,29 +2803,57 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
     ).set_env("LLAMA_ARG_EXPERT_TARGET_P"));
     add_opt(common_arg(
         {"-etpmin", "--expert-target-p-min"}, "F",
-        "min target cumulative routing probability mass (0.0 to 1.0, default: 0.85)",
+        "min target cumulative routing probability mass (0.0 to 1.0, default: 1.0; 0 or 1.0 disables early exit)",
         [](common_params & params, const std::string & value) {
-            const float v = std::stof(value);
+            float v = std::stof(value);
             if (v < 0.0f || v > 1.0f) {
                 throw std::invalid_argument("invalid value (must be between 0.0 and 1.0)");
+            }
+            if (v == 0.0f) {
+                v = 1.0f;
             }
             params.expert_target_p_min = v;
         }
     ).set_env("LLAMA_ARG_EXPERT_TARGET_P_MIN"));
     add_opt(common_arg(
         {"-etpmax", "--expert-target-p-max"}, "F",
-        "max target cumulative routing probability mass (0.0 to 1.0, default: 0.85, set equal to -etpmin for fixed target)",
+        "max target cumulative routing probability mass (0.0 to 1.0, default: 1.0; 0 or 1.0 disables early exit)",
         [](common_params & params, const std::string & value) {
-            const float v = std::stof(value);
+            float v = std::stof(value);
             if (v < 0.0f || v > 1.0f) {
                 throw std::invalid_argument("invalid value (must be between 0.0 and 1.0)");
+            }
+            if (v == 0.0f) {
+                v = 1.0f;
             }
             params.expert_target_p_max = v;
         }
     ).set_env("LLAMA_ARG_EXPERT_TARGET_P_MAX"));
     add_opt(common_arg(
+        {"-etpdd", "--expert-target-p-depth-delta", "--expert-depth-delta"}, "F",
+        "depth-based slope for target-p across layers (0.0 to 0.5, default: 0.0, 0 to disable)",
+        [](common_params & params, const std::string & value) {
+            const float v = std::stof(value);
+            if (v < 0.0f || v > 0.5f) {
+                throw std::invalid_argument("invalid value (must be between 0.0 and 0.5)");
+            }
+            params.expert_target_p_depth_delta = v;
+        }
+    ).set_env("LLAMA_ARG_EXPERT_TARGET_P_DEPTH_DELTA"));
+    add_opt(common_arg(
+        {"-eiw", "--expert-imatrix-weight"}, "F",
+        "persistent imatrix score weight in expert retention (0.0 to 1.0, default: 0.0, 0 to disable)",
+        [](common_params & params, const std::string & value) {
+            const float v = std::stof(value);
+            if (v < 0.0f || v > 1.0f) {
+                throw std::invalid_argument("invalid value (must be between 0.0 and 1.0)");
+            }
+            params.expert_imatrix_weight = v;
+        }
+    ).set_env("LLAMA_ARG_EXPERT_IMATRIX_WEIGHT"));
+    add_opt(common_arg(
         {"-esm", "--expert-swap-max"}, "F",
-        "max dynamic expert swaps between requests as fraction of total VRAM experts (default: 0.1, 0 to disable)",
+        "max dynamic expert swaps between requests as fraction of total VRAM experts (default: 0.0, 0 to disable)",
         [](common_params & params, const std::string & value) {
             const float v = std::stof(value);
             if (v < 0.0f || v > 1.0f) {

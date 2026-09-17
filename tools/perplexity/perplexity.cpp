@@ -597,7 +597,7 @@ static results_perplexity perplexity(llama_context * ctx, const common_params & 
             }
 
             if (params.expert_swap_max > 0.0f && j + 1 < num_batches) {
-                llama_model_expert_tier_update(const_cast<llama_model *>(model), params.expert_swap_max, params.expert_attenuation);
+                llama_model_expert_tier_update(const_cast<llama_model *>(model), params.expert_swap_max, params.expert_attenuation, params.expert_imatrix_weight);
             }
         }
 
@@ -648,7 +648,7 @@ static results_perplexity perplexity(llama_context * ctx, const common_params & 
         logits.clear();
 
         if (params.expert_swap_max > 0.0f) {
-            llama_model_expert_tier_update(const_cast<llama_model *>(model), params.expert_swap_max, params.expert_attenuation);
+            llama_model_expert_tier_update(const_cast<llama_model *>(model), params.expert_swap_max, params.expert_attenuation, params.expert_imatrix_weight);
             llama_model_expert_tier_drain_queue(const_cast<llama_model *>(model), 0);
         }
     }
@@ -1852,7 +1852,7 @@ static void kl_divergence(llama_context * ctx, const common_params & params) {
             }
 
             if (params.expert_swap_max > 0.0f && j + 1 < num_batches) {
-                llama_model_expert_tier_update(const_cast<llama_model *>(model), params.expert_swap_max, params.expert_attenuation);
+                llama_model_expert_tier_update(const_cast<llama_model *>(model), params.expert_swap_max, params.expert_attenuation, params.expert_imatrix_weight);
             }
         }
 
@@ -1917,7 +1917,7 @@ static void kl_divergence(llama_context * ctx, const common_params & params) {
         logits.clear();
 
         if (params.expert_swap_max > 0.0f) {
-            llama_model_expert_tier_update(const_cast<llama_model *>(model), params.expert_swap_max, params.expert_attenuation);
+            llama_model_expert_tier_update(const_cast<llama_model *>(model), params.expert_swap_max, params.expert_attenuation, params.expert_imatrix_weight);
             llama_model_expert_tier_drain_queue(const_cast<llama_model *>(model), 0);
         }
     }

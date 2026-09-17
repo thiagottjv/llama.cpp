@@ -186,8 +186,8 @@ void ggml_compute_forward_moe_cold(
     const int nth = params->nth;
 
     const enum ggml_type type_g = w_gate->type;
+    const enum ggml_type type_u = w_up->type;
     const enum ggml_type type_d = w_down->type;
-    GGML_ASSERT(w_up->type == type_g);
     GGML_ASSERT(x->type == GGML_TYPE_F32);
     GGML_ASSERT(dst->type == GGML_TYPE_F32);
     GGML_ASSERT(x->ne[1] == 1 && x->nb[0] == sizeof(float));
@@ -228,17 +228,24 @@ void ggml_compute_forward_moe_cold(
 
     ggml_vec_dot_t    const vec_dot_g = ggml_get_type_traits_cpu(type_g)->vec_dot;
     enum ggml_type    const vdt_g     = ggml_get_type_traits_cpu(type_g)->vec_dot_type;
-    ggml_from_float_t const from_fx   = ggml_get_type_traits_cpu(vdt_g)->from_float;
+    ggml_from_float_t const from_fx_g = ggml_get_type_traits_cpu(vdt_g)->from_float;
+
+    ggml_vec_dot_t    const vec_dot_u = ggml_get_type_traits_cpu(type_u)->vec_dot;
+    enum ggml_type    const vdt_u     = ggml_get_type_traits_cpu(type_u)->vec_dot_type;
+    ggml_from_float_t const from_fx_u = ggml_get_type_traits_cpu(vdt_u)->from_float;
+
     ggml_vec_dot_t    const vec_dot_d = ggml_get_type_traits_cpu(type_d)->vec_dot;
     enum ggml_type    const vdt_d     = ggml_get_type_traits_cpu(type_d)->vec_dot_type;
     ggml_from_float_t const from_fa   = ggml_get_type_traits_cpu(vdt_d)->from_float;
 
-    const size_t q_embd = ggml_row_size(vdt_g, ne_embd);
-    const size_t q_ff   = ggml_row_size(vdt_d, n_ff);
+    const size_t q_embd_g = ggml_row_size(vdt_g, ne_embd);
+    const size_t q_embd_u = (vdt_u == vdt_g) ? q_embd_g : ggml_row_size(vdt_u, ne_embd);
+    const size_t q_ff     = ggml_row_size(vdt_d, n_ff);
 
     void * wdata_cur = params->wdata;
 
-    char * xq = (char *) incr_ptr_aligned(&wdata_cur, n_tokens*q_embd, sizeof(int64_t));
+    char * xq_g = (char *) incr_ptr_aligned(&wdata_cur, n_tokens*q_embd_g, sizeof(int64_t));
+    char * xq_u = (vdt_u == vdt_g) ? xq_g : (char *) incr_ptr_aligned(&wdata_cur, n_tokens*q_embd_u, sizeof(int64_t));
 
     int64_t * matrix_row_counts =
         (int64_t *) incr_ptr_aligned(&wdata_cur, n_as*sizeof(int64_t), sizeof(int64_t));
@@ -261,7 +268,11 @@ void ggml_compute_forward_moe_cold(
 
     // quantize x once, shared by all experts
     for (int64_t t = ith; t < n_tokens; t += nth) {
-        from_fx((const float *) ((const char *) x->data + t*x->nb[2]), xq + t*q_embd, ne_embd);
+        const float * x_token = (const float *) ((const char *) x->data + t*x->nb[2]);
+        from_fx_g(x_token, xq_g + t*q_embd_g, ne_embd);
+        if (vdt_u != vdt_g) {
+            from_fx_u(x_token, xq_u + t*q_embd_u, ne_embd);
+        }
     }
 
     if (ith == 0) {
@@ -342,14 +353,15 @@ void ggml_compute_forward_moe_cold(
 
             for (int64_t c = ir1_start; c < ir1_end; c++) {
                 const struct mmid_row_mapping rm = matrix_rows[cur_a*(int64_t)n_ids*n_tokens + c];
-                const char * xcol = xq + (int64_t) rm.i2*q_embd;
+                const char * xcol_g = xq_g + (int64_t) rm.i2*q_embd_g;
+                const char * xcol_u = xq_u + (int64_t) rm.i2*q_embd_u;
                 float * gout = gate_out + (col0[cur_a] + c)*n_ff;
                 float * uout = up_out   + (col0[cur_a] + c)*n_ff;
                 for (int64_t i = ir0_start; i < ir0_end; i++) {
                     PREFETCH(wg + (i + 1)*w_gate->nb[1]);
                     PREFETCH(wu + (i + 1)*w_up->nb[1]);
-                    vec_dot_g(ne_embd, &gout[i], 0, wg + i*w_gate->nb[1], 0, xcol, 0, 1);
-                    vec_dot_g(ne_embd, &uout[i], 0, wu + i*w_up->nb[1], 0, xcol, 0, 1);
+                    vec_dot_g(ne_embd, &gout[i], 0, wg + i*w_gate->nb[1], 0, xcol_g, 0, 1);
+                    vec_dot_u(ne_embd, &uout[i], 0, wu + i*w_up->nb[1], 0, xcol_u, 0, 1);
                 }
             }
 

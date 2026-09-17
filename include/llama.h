@@ -1642,14 +1642,16 @@ extern "C" {
             const int32_t      * layer_hot_s,
             float                target_p_min,
             float                target_p_max,
-            const float        * layer_scores_norm);
+            const float        * layer_scores_norm,
+            float                target_p_depth_delta);
 
     LLAMA_API void llama_model_free_expert_tier(void);
 
     LLAMA_API int32_t llama_model_expert_tier_update(
             struct llama_model * model,
             float                swap_frac,
-            float                attenuation);
+            float                attenuation,
+            float                imatrix_weight);
 
     LLAMA_API int32_t llama_model_expert_tier_drain_queue(
             struct llama_model * model,

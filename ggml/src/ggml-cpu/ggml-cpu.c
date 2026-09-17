@@ -2909,15 +2909,20 @@ struct ggml_cplan ggml_graph_plan(
                     {
                         cur = 0;
                         const struct ggml_tensor * w_gate = node->src[0];
+                        const struct ggml_tensor * w_up   = node->src[1];
                         const struct ggml_tensor * w_down = node->src[2];
                         const struct ggml_tensor * x      = node->src[3];
                         const struct ggml_tensor * ids    = node->src[4];
                         const enum ggml_type vdt_g = type_traits_cpu[w_gate->type].vec_dot_type;
+                        const enum ggml_type vdt_u = type_traits_cpu[w_up->type].vec_dot_type;
                         const enum ggml_type vdt_d = type_traits_cpu[w_down->type].vec_dot_type;
                         const int n_as = w_gate->ne[2];
                         const int64_t maxc = ids->ne[0]*ids->ne[1];
                         // quantized x
                         cur += ggml_row_size(vdt_g, ggml_nelements(x)) + sizeof(int64_t);
+                        if (vdt_u != vdt_g) {
+                            cur += ggml_row_size(vdt_u, ggml_nelements(x)) + sizeof(int64_t);
+                        }
                         // matrix_row_counts + col0
                         cur += 2*n_as*sizeof(int64_t) + 2*sizeof(int64_t);
                         // matrix_rows
