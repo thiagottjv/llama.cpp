@@ -61,6 +61,13 @@ using llama_tokens = std::vector<llama_token>;
 
 struct common_control_vector_load_info;
 
+struct common_expert_early_exit_rule {
+    int32_t il_start     = -1;
+    int32_t il_end       = -1;
+    float   target_p_min = 1.0f;
+    float   target_p_max = 1.0f;
+};
+
 //
 // CPU utils
 //
@@ -526,11 +533,9 @@ struct common_params {
     std::vector<llama_model_kv_override> kv_overrides;
     std::vector<llama_model_tensor_buft_override> tensor_buft_overrides;
 
-    int32_t     vram_expert_budget_mb = 0; // VRAM budget in MiB to allocate for hot MoE experts
-    float       expert_target_p_min = 1.0f; // min target cumulative routing probability mass (default: 1.0, 1.0 = disabled)
-    float       expert_target_p_max = 1.0f; // max target cumulative routing probability mass (default: 1.0, 1.0 = disabled)
-    float       expert_target_p_depth_delta = 0.0f; // depth-based slope for target-p across layers (default: 0.0, disabled)
-    std::string expert_imatrix  = "";    // path to imatrix file for expert importance ranking
+    int32_t     vram_expert_budget_mb = 0;    // VRAM budget in MiB to allocate for hot MoE experts
+    std::vector<common_expert_early_exit_rule> expert_early_exit_rules; // rules for per-layer early exit [start, end, min, max]
+    std::string expert_imatrix        = "";   // path to imatrix file for expert importance ranking
     float       expert_imatrix_weight = 0.0f; // persistent imatrix score weight in expert retention [0.0, 1.0] (default: 0.0, disabled)
     float       expert_swap_max = 0.0f;  // max dynamic expert swaps fraction of total VRAM experts (default: 0.0, 0 to disable)
     float       expert_attenuation = 0.15f; // expert EMA attenuation rate (0.0 to 1.0, decay = 1 - rate)

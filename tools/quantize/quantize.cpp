@@ -156,6 +156,8 @@ static void usage(const char * executable) {
     printf("                                      WARNING: this is an advanced option, use with care.\n");
     printf("  --keep-split\n");
     printf("                                      generate quantized model in the same shards as input\n");
+    printf("  --skip-existing\n");
+    printf("                                      skip writing split files that already exist on disk (requires --keep-split)\n");
     printf("  --override-kv KEY=TYPE:VALUE\n");
     printf("                                      override model metadata by key in the quantized model. may be specified multiple times.\n");
     printf("                                      WARNING: this is an advanced option, use with care.\n");
@@ -470,6 +472,8 @@ int llama_quantize(int argc, char ** argv) {
             }
         } else if (strcmp(argv[arg_idx], "--keep-split") == 0) {
             params.keep_split = true;
+        } else if (strcmp(argv[arg_idx], "--skip-existing") == 0) {
+            params.skip_existing = true;
         } else if (strcmp(argv[arg_idx], "--max-buffer-size") == 0) {
             if (arg_idx == argc-1) {
                 usage(argv[0]);
@@ -618,6 +622,11 @@ int llama_quantize(int argc, char ** argv) {
     }
 
     if (!params.dry_run) {
+        if (params.skip_existing && !params.keep_split) {
+            fprintf(stderr, "%s: error: --skip-existing requires --keep-split\n", __func__);
+            return 1;
+        }
+
         if (std::error_code ec; std::filesystem::equivalent(fname_inp, fname_out, ec)) {
             fprintf(stderr, "%s: error: input and output files are the same: '%s'\n", __func__, fname_inp.c_str());
             return 1;

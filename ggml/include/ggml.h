@@ -1509,7 +1509,7 @@ extern "C" {
     // for cold experts only (cold_mask[i] == 1); hot slots zeroed.
     // act: 0 = silu, 1 = gelu. counts: optional hit counter [n_experts+1].
     // weights: optional routing weights [1, n_expert_used, n_tokens].
-    // target_p_min, target_p_max: cumulative probability range (equal for fixed target).
+    // target_p_min, target_p_max: cumulative probability range for token-difficulty scaling (equal for fixed target).
     // scores: optional normalized global expert scores [n_experts].
     GGML_API struct ggml_tensor * ggml_moe_cold(
             struct ggml_context * ctx,

@@ -1444,7 +1444,7 @@ common_init_result_ptr common_init_from_params(common_params & params, bool mode
         return res;
     }
 
-    const bool use_expert_tier = (params.vram_expert_budget_mb > 0);
+    const bool use_expert_tier = (params.vram_expert_budget_mb > 0) || !params.expert_imatrix.empty() || !params.expert_early_exit_rules.empty();
     if (use_expert_tier) {
         std::vector<int32_t> expert_order;
         std::vector<int32_t> layer_nve;
@@ -1466,6 +1466,26 @@ common_init_result_ptr common_init_from_params(common_params & params, bool mode
             std::vector<float> layer_scores_norm(n_layers * n_experts, 0.5f);
             expert_order.resize(n_layers * n_experts);
             layer_nve.assign(n_layers, 0);
+
+            std::vector<float> layer_target_p_min(n_layers, 1.0f);
+            std::vector<float> layer_target_p_max(n_layers, 1.0f);
+            for (const auto & rule : params.expert_early_exit_rules) {
+                if (rule.il_start < 0 || rule.il_start >= n_layers) continue;
+                int32_t start = std::max(0, rule.il_start);
+                int32_t end   = std::min(n_layers - 1, rule.il_end);
+                for (int il = start; il <= end; ++il) {
+                    layer_target_p_min[il] = rule.target_p_min;
+                    layer_target_p_max[il] = rule.target_p_max;
+                }
+            }
+
+            bool early_exit_active = false;
+            for (int il = 0; il < n_layers; ++il) {
+                if (layer_target_p_min[il] < 1.0f || layer_target_p_max[il] < 1.0f) {
+                    early_exit_active = true;
+                    break;
+                }
+            }
 
             bool loaded_imatrix = false;
             if (!params.expert_imatrix.empty()) {
@@ -1631,13 +1651,141 @@ common_init_result_ptr common_init_from_params(common_params & params, bool mode
 
                     COM_INF("expert tier: loaded imatrix '%s' (%d/%d layers matched, %d experts)\n",
                         params.expert_imatrix.c_str(), matched_layers, n_layers, n_experts);
+
+                    // Energy profiling per layer based on activation energy (in_sum2)
+                    std::vector<double> layer_energy(n_layers, 0.0);
+                    double energy_sum = 0.0;
+                    double energy_min = 1e30;
+                    double energy_max = 0.0;
+                    int energy_layer_count = 0;
+
+                    auto calc_entry_energy = [](const common_imatrix_entry & e) -> double {
+                        if (e.sums.empty()) return 0.0;
+                        double s = 0.0;
+                        for (float v : e.sums) {
+                            s += (double) std::abs(v);
+                        }
+                        return s / (double) e.sums.size();
+                    };
+
+                    for (int il = 0; il < n_layers; ++il) {
+                        double moe_energy_total = 0.0;
+                        int moe_tensor_count = 0;
+                        double attn_gate_energy = 0.0;
+
+                        const std::vector<std::string> moe_tensors = {
+                            "blk." + std::to_string(il) + ".ffn_gate_exps.weight",
+                            "blk." + std::to_string(il) + ".ffn_down_exps.weight",
+                            "blk." + std::to_string(il) + ".ffn_up_exps.weight",
+                            "blk." + std::to_string(il) + ".ffn_gate_up_exps.weight",
+                            "blk." + std::to_string(il) + ".ffn_gate_exps",
+                            "blk." + std::to_string(il) + ".ffn_down_exps",
+                            "blk." + std::to_string(il) + ".ffn_up_exps",
+                            "blk." + std::to_string(il) + ".ffn_gate_up_exps"
+                        };
+
+                        for (const auto & name : moe_tensors) {
+                            auto it = imatrix_data.entries.find(name);
+                            if (it != imatrix_data.entries.end()) {
+                                double e = calc_entry_energy(it->second);
+                                if (e > 0.0) {
+                                    moe_energy_total += e;
+                                    moe_tensor_count++;
+                                }
+                            }
+                        }
+
+                        const std::vector<std::string> attn_tensors = {
+                            "blk." + std::to_string(il) + ".attn_gate.weight",
+                            "blk." + std::to_string(il) + ".attn_gate"
+                        };
+
+                        for (const auto & name : attn_tensors) {
+                            auto it = imatrix_data.entries.find(name);
+                            if (it != imatrix_data.entries.end()) {
+                                attn_gate_energy = calc_entry_energy(it->second);
+                                break;
+                            }
+                        }
+
+                        double l_energy = 0.0;
+                        if (moe_tensor_count > 0) {
+                            l_energy = (moe_energy_total / (double) moe_tensor_count) + attn_gate_energy;
+                        } else {
+                            const std::string layer_pat = "blk." + std::to_string(il) + ".";
+                            double any_total = 0.0;
+                            int any_count = 0;
+                            for (const auto & kv : imatrix_data.entries) {
+                                if (kv.first.rfind(layer_pat, 0) == 0) {
+                                    double e = calc_entry_energy(kv.second);
+                                    if (e > 0.0) {
+                                        any_total += e;
+                                        any_count++;
+                                    }
+                                }
+                            }
+                            if (any_count > 0) {
+                                l_energy = any_total / (double) any_count;
+                            }
+                        }
+
+                        layer_energy[il] = l_energy;
+                        if (l_energy > 0.0) {
+                            energy_sum += l_energy;
+                            energy_min = std::min(energy_min, l_energy);
+                            energy_max = std::max(energy_max, l_energy);
+                            energy_layer_count++;
+                        }
+                    }
+
+                    const double global_mean = (energy_layer_count > 0) ? (energy_sum / (double) energy_layer_count) : 0.0;
+
+                    enum class energy_type { VALLEY, PLATEAU, PEAK };
+                    std::vector<energy_type> layer_types(n_layers, energy_type::PLATEAU);
+
+                    if (global_mean > 0.0) {
+                        for (int il = 0; il < n_layers; ++il) {
+                            if (layer_energy[il] > 1.35 * global_mean) {
+                                layer_types[il] = energy_type::PEAK;
+                            } else if (layer_energy[il] < 0.70 * global_mean) {
+                                layer_types[il] = energy_type::VALLEY;
+                            } else {
+                                layer_types[il] = energy_type::PLATEAU;
+                            }
+                        }
+                    }
+
+                    if (params.verbosity >= 4 || common_log_get_verbosity_thold() >= 4) {
+                        COM_INF("expert tier: layer-by-layer energy chart (mean: %.1f, min: %.1f, max: %.1f):\n",
+                            global_mean, energy_min, energy_max);
+                        const int max_bar_len = 30;
+                        for (int il = 0; il < n_layers; ++il) {
+                            int bar_len = (energy_max > 0.0) ? (int) std::round((layer_energy[il] / energy_max) * max_bar_len) : 0;
+                            bar_len = std::max(0, std::min(max_bar_len, bar_len));
+                            std::string bar(bar_len, '#');
+                            bar.resize(max_bar_len, ' ');
+
+                            const char * type_str = (layer_types[il] == energy_type::PEAK) ? "PEAK" :
+                                                    (layer_types[il] == energy_type::VALLEY) ? "VALLEY" : "PLATEAU";
+
+                            char p_buf[64];
+                            if (layer_target_p_min[il] == layer_target_p_max[il]) {
+                                snprintf(p_buf, sizeof(p_buf), "target-p: %.2f", layer_target_p_min[il]);
+                            } else {
+                                snprintf(p_buf, sizeof(p_buf), "target-p: [%.2f, %.2f]", layer_target_p_min[il], layer_target_p_max[il]);
+                            }
+
+                            COM_INF("expert tier:   L%02d: [%s] %6.1f (%-7s) -> %s\n",
+                                il, bar.c_str(), layer_energy[il], type_str, p_buf);
+                        }
+                    }
                 } else {
                     COM_WRN("expert tier: failed to load imatrix '%s', using default expert ordering\n",
                         params.expert_imatrix.c_str());
                 }
             }
 
-            if (!loaded_imatrix) {
+            if (!loaded_imatrix && target_budget_bytes > 0) {
                 // Fallback: distribute budget uniformly across layers round-robin
                 size_t allocated_bytes = 0;
                 bool added = true;
@@ -1663,36 +1811,26 @@ common_init_result_ptr common_init_from_params(common_params & params, bool mode
                     (double) target_budget_bytes / (1024.0 * 1024.0), n_layers);
             }
 
-            if (params.expert_target_p_min <= 0.0f) {
-                params.expert_target_p_min = 1.0f;
-            }
-            if (params.expert_target_p_max <= 0.0f) {
-                params.expert_target_p_max = 1.0f;
-            }
-
-            if (params.expert_target_p_min > params.expert_target_p_max) {
-                std::swap(params.expert_target_p_min, params.expert_target_p_max);
-            }
-
-            if (params.expert_target_p_min >= 1.0f && params.expert_target_p_max >= 1.0f && params.expert_target_p_depth_delta <= 0.0f) {
+            if (!loaded_imatrix) {
+                if (early_exit_active) {
+                    COM_INF("expert tier: granular early exit active (%zu rules applied)\n", params.expert_early_exit_rules.size());
+                } else {
+                    COM_INF("%s", "expert tier: early exit disabled (target-p = 1.0, 100% precision)\n");
+                }
+            } else if (!early_exit_active) {
                 COM_INF("%s", "expert tier: early exit disabled (target-p = 1.0, 100% precision)\n");
-            } else if (params.expert_target_p_depth_delta > 0.0f) {
-                COM_INF("expert tier: layer-aware target-p enabled: range [%.2f, %.2f], depth delta +/-%.2f\n",
-                    params.expert_target_p_min, params.expert_target_p_max, params.expert_target_p_depth_delta);
-            } else if (params.expert_target_p_min != params.expert_target_p_max) {
-                COM_INF("expert tier: dynamic early exit enabled: range [%.2f, %.2f] based on global expert ranking\n",
-                    params.expert_target_p_min, params.expert_target_p_max);
-            } else {
-                COM_INF("expert tier: target-p fixed at %.2f\n", params.expert_target_p_min);
             }
 
-            llama_model_init_expert_tier(model,
-                expert_order.data(), expert_order.size(),
-                layer_nve.data(),
-                params.expert_target_p_min,
-                params.expert_target_p_max,
-                layer_scores_norm.data(),
-                params.expert_target_p_depth_delta);
+            if (target_budget_bytes > 0) {
+                llama_model_init_expert_tier(model,
+                    expert_order.data(), expert_order.size(),
+                    layer_nve.data(),
+                    layer_target_p_min.data(),
+                    layer_target_p_max.data(),
+                    layer_scores_norm.data());
+            } else {
+                COM_WRN("%s", "expert tier: --vram-expert-budget-mb is 0, expert VRAM offloading and early-exit are inactive during execution\n");
+            }
         }
     }
 

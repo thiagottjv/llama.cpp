@@ -45,6 +45,7 @@ namespace {
         std::vector<int32_t> slot_to_expert;
         std::vector<float>   expert_scores;
         std::vector<float>   expert_scores_norm;
+        std::vector<float>   expert_imatrix_norm;
         std::vector<int32_t> hot_lut_cpu;
         std::vector<int32_t> cold_mask_cpu;
     };
@@ -65,8 +66,6 @@ namespace {
     std::deque<candidate_swap> g_swap_queue;
     std::atomic<bool> g_has_pending_swaps{false};
     thread_local bool g_fused_active = false;
-    float g_target_p_min = 1.0f;
-    float g_target_p_max = 1.0f;
 
     std::vector<ggml_context_ptr>        g_ctxs;
     std::vector<ggml_backend_buffer_ptr> g_bufs;
@@ -198,17 +197,14 @@ ggml_tensor * llama_expert_tier_end_fused(ggml_context * ctx,
 bool llama_expert_tier_init(llama_model * model,
                             const std::vector<std::vector<int>> & layer_expert_order,
                             const std::vector<int> & layer_hot_s,
-                            float target_p_min,
-                            float target_p_max,
-                            const std::vector<std::vector<float>> & layer_scores_norm,
-                            float target_p_depth_delta) {
+                            const float * layer_target_p_min,
+                            const float * layer_target_p_max,
+                            const std::vector<std::vector<float>> & layer_scores_norm) {
     if (!model || layer_hot_s.empty()) {
         return false;
     }
 
     llama_expert_tier_free();
-    g_target_p_min = target_p_min;
-    g_target_p_max = target_p_max;
 
     // Look for GPU device in model
     ggml_backend_dev_t gpu_dev = nullptr;
@@ -234,6 +230,15 @@ bool llama_expert_tier_init(llama_model * model,
 
     int n_layers = (int) model->layers.size();
     int total_tiered_tensors = 0;
+    bool early_exit_active = false;
+    if (layer_target_p_min && layer_target_p_max) {
+        for (int il = 0; il < n_layers; ++il) {
+            if (layer_target_p_min[il] < 1.0f || layer_target_p_max[il] < 1.0f) {
+                early_exit_active = true;
+                break;
+            }
+        }
+    }
 
     for (int il = 0; il < n_layers; ++il) {
         auto & layer = model->layers[il];
@@ -338,14 +343,8 @@ bool llama_expert_tier_init(llama_model * model,
         }
         ggml_backend_tensor_set(exp_scores, norm_init.data(), 0, n_experts * sizeof(float));
 
-        float l_target_p_min = g_target_p_min;
-        float l_target_p_max = g_target_p_max;
-        if (target_p_depth_delta > 0.0f && n_layers > 1) {
-            const float depth_frac = (float) il / (float) (n_layers - 1);
-            const float delta = (depth_frac - 0.5f) * 2.0f * target_p_depth_delta;
-            l_target_p_min = std::max(0.05f, std::min(1.0f, g_target_p_min + delta));
-            l_target_p_max = std::max(0.05f, std::min(1.0f, g_target_p_max + delta));
-        }
+        const float l_target_p_min = layer_target_p_min ? layer_target_p_min[il] : 1.0f;
+        const float l_target_p_max = layer_target_p_max ? layer_target_p_max[il] : 1.0f;
 
         {
             std::lock_guard<std::mutex> lk(g_mtx);
@@ -380,6 +379,7 @@ bool llama_expert_tier_init(llama_model * model,
             }
             lt.expert_scores.assign(n_experts, 0.0f);
             lt.expert_scores_norm = norm_init;
+            lt.expert_imatrix_norm = norm_init;
             lt.hot_lut_cpu = h_lut;
             lt.cold_mask_cpu = c_mask;
             g_layers.push_back(std::move(lt));
@@ -391,15 +391,12 @@ bool llama_expert_tier_init(llama_model * model,
         g_bufs.push_back(ggml_backend_buffer_ptr(buf_cpu));
     }
 
-    if (target_p_depth_delta > 0.0f) {
-        LLAMA_LOG_INFO("%s: initialized expert tier (%d tensors offloaded, target p: [%.2f, %.2f], depth delta: +/-%.2f)\n",
-            __func__, total_tiered_tensors, target_p_min, target_p_max, target_p_depth_delta);
-    } else if (target_p_min != target_p_max) {
-        LLAMA_LOG_INFO("%s: initialized expert tier (%d tensors offloaded, dynamic target p: [%.2f, %.2f])\n",
-            __func__, total_tiered_tensors, target_p_min, target_p_max);
+    if (early_exit_active) {
+        LLAMA_LOG_INFO("%s: initialized expert tier (%d tensors offloaded, granular early exit active)\n",
+            __func__, total_tiered_tensors);
     } else {
-        LLAMA_LOG_INFO("%s: initialized expert tier (%d tensors offloaded, target p: %.2f)\n",
-            __func__, total_tiered_tensors, target_p_min);
+        LLAMA_LOG_INFO("%s: initialized expert tier (%d tensors offloaded, early exit disabled: 100%% precision)\n",
+            __func__, total_tiered_tensors);
     }
 
     if (g_transfer_backend) {
@@ -540,8 +537,15 @@ int32_t llama_expert_tier_update(float swap_frac, float attenuation, float imatr
         return 0;
     }
 
-    // Update normalized global scores if dynamic early exit is active
-    if (g_target_p_max > g_target_p_min) {
+    // Update normalized global scores if dynamic token scaling is active
+    bool has_dynamic_p = false;
+    for (const auto & lt : g_layers) {
+        if (lt.target_p_max > lt.target_p_min) {
+            has_dynamic_p = true;
+            break;
+        }
+    }
+    if (has_dynamic_p) {
         float global_min = 1e30f;
         float global_max = -1e30f;
         for (const auto & lt : g_layers) {
@@ -574,8 +578,8 @@ int32_t llama_expert_tier_update(float swap_frac, float attenuation, float imatr
 
         auto get_expert_retention_score = [&](int ex) -> float {
             float s = lt.expert_scores[ex];
-            if (imatrix_weight > 0.0f && ex < (int) lt.expert_scores_norm.size()) {
-                const float s_norm = lt.expert_scores_norm[ex];
+            if (imatrix_weight > 0.0f && ex < (int) lt.expert_imatrix_norm.size()) {
+                const float s_norm = lt.expert_imatrix_norm[ex];
                 s = (1.0f - imatrix_weight) * s + imatrix_weight * (s_norm * IMATRIX_SCORE_SCALE);
             }
             return s;
@@ -682,10 +686,9 @@ bool llama_model_init_expert_tier(
         const int32_t      * expert_order,
         size_t               n_expert_order,
         const int32_t      * layer_hot_s_arr,
-        float                target_p_min,
-        float                target_p_max,
-        const float        * layer_scores_norm,
-        float                target_p_depth_delta) {
+        const float        * layer_target_p_min,
+        const float        * layer_target_p_max,
+        const float        * layer_scores_norm) {
     std::vector<std::vector<int>> order;
     std::vector<int> layer_hot_s;
     std::vector<std::vector<float>> scores_norm;
@@ -711,7 +714,9 @@ bool llama_model_init_expert_tier(
             }
         }
     }
-    return llama_expert_tier_init(model, order, layer_hot_s, target_p_min, target_p_max, scores_norm, target_p_depth_delta);
+    return llama_expert_tier_init(model, order, layer_hot_s,
+        layer_target_p_min, layer_target_p_max,
+        scores_norm);
 }
 
 void llama_model_free_expert_tier(void) {

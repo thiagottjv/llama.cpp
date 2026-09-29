@@ -824,7 +824,7 @@ static bool common_params_parse_ex(int argc, char ** argv, common_params_context
                 throw std::invalid_argument(string_format("error: invalid argument: %s", arg.c_str()));
             }
             if (!seen_args.insert(arg).second) {
-                const bool skip = (arg == "--spec-type");
+                const bool skip = (arg == "--spec-type" || arg == "-eee" || arg == "--expert-early-exit");
 
                 if (!skip) {
                     LOG_WRN("DEPRECATED: argument '%s' specified multiple times, use comma-separated values instead (only last value will be used)\n", arg.c_str());
@@ -1217,7 +1217,7 @@ bool common_params_to_map(int argc, char ** argv, llama_example ex, std::map<com
             throw std::invalid_argument(string_format("error: invalid argument: %s", arg.c_str()));
         }
         if (!seen_args.insert(arg).second) {
-            const bool skip = (arg == "--spec-type");
+            const bool skip = (arg == "--spec-type" || arg == "-eee" || arg == "--expert-early-exit");
 
             if (!skip) {
                 LOG_WRN("DEPRECATED: argument '%s' specified multiple times, use comma-separated values instead (only last value will be used)\n", arg.c_str());
@@ -1386,6 +1386,54 @@ static std::vector<std::string> parse_csv_row(const std::string& input) {
     fields.push_back(std::move(field));
 
     return fields;
+}
+
+static void parse_expert_early_exit_rules(const std::string & value, std::vector<common_expert_early_exit_rule> & rules) {
+    std::stringstream ss(value);
+    std::string item;
+    while (std::getline(ss, item, ';')) {
+        std::stringstream ss2(item);
+        std::string subitem;
+        while (std::getline(ss2, subitem, '|')) {
+            size_t start = subitem.find_first_not_of(" \t\r\n");
+            size_t end   = subitem.find_last_not_of(" \t\r\n");
+            if (start == std::string::npos) continue;
+            std::string s = subitem.substr(start, end - start + 1);
+
+            std::vector<std::string> parts;
+            std::stringstream ss3(s);
+            std::string part;
+            while (std::getline(ss3, part, ',')) {
+                size_t p_start = part.find_first_not_of(" \t\r\n");
+                size_t p_end   = part.find_last_not_of(" \t\r\n");
+                if (p_start != std::string::npos) {
+                    parts.push_back(part.substr(p_start, p_end - p_start + 1));
+                }
+            }
+
+            if (parts.size() != 3 && parts.size() != 4) {
+                throw std::invalid_argument("invalid --expert-early-exit format: expected [start],[end],[min],[max] or [start],[end],[target_p]");
+            }
+
+            int32_t il_start = std::stoi(parts[0]);
+            int32_t il_end   = std::stoi(parts[1]);
+            if (il_start < 0 || il_end < il_start) {
+                throw std::invalid_argument("invalid layer range in --expert-early-exit (must have 0 <= start <= end)");
+            }
+
+            float p_min = std::stof(parts[2]);
+            float p_max = (parts.size() == 4) ? std::stof(parts[3]) : p_min;
+
+            if (p_min < 0.0f || p_min > 1.0f || p_max < 0.0f || p_max > 1.0f) {
+                throw std::invalid_argument("invalid target-p in --expert-early-exit (must be between 0.0 and 1.0)");
+            }
+            if (p_min == 0.0f) p_min = 1.0f;
+            if (p_max == 0.0f) p_max = 1.0f;
+            if (p_min > p_max) std::swap(p_min, p_max);
+
+            rules.push_back({ il_start, il_end, p_min, p_max });
+        }
+    }
 }
 
 common_params_context common_params_parser_init(common_params & params, llama_example ex, void(*print_usage)(int, char **)) {
@@ -2787,59 +2835,12 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
         }
     ).set_env("LLAMA_ARG_EXPERT_IMATRIX"));
     add_opt(common_arg(
-        {"-etp", "--expert-target-p"}, "F",
-        "fixed target cumulative routing probability mass (0.0 to 1.0, default: 1.0; 0 or 1.0 disables early exit)",
+        {"-eee", "--expert-early-exit"}, "START,END,MIN[,MAX]",
+        "layer-specific early exit rule: [start],[end],[min],[max] or [start],[end],[target_p] (repeatable, default: disabled; use -lv 4 to view layer energy chart)",
         [](common_params & params, const std::string & value) {
-            float v = std::stof(value);
-            if (v < 0.0f || v > 1.0f) {
-                throw std::invalid_argument("invalid value (must be between 0.0 and 1.0)");
-            }
-            if (v == 0.0f) {
-                v = 1.0f;
-            }
-            params.expert_target_p_min = v;
-            params.expert_target_p_max = v;
+            parse_expert_early_exit_rules(value, params.expert_early_exit_rules);
         }
-    ).set_env("LLAMA_ARG_EXPERT_TARGET_P"));
-    add_opt(common_arg(
-        {"-etpmin", "--expert-target-p-min"}, "F",
-        "min target cumulative routing probability mass (0.0 to 1.0, default: 1.0; 0 or 1.0 disables early exit)",
-        [](common_params & params, const std::string & value) {
-            float v = std::stof(value);
-            if (v < 0.0f || v > 1.0f) {
-                throw std::invalid_argument("invalid value (must be between 0.0 and 1.0)");
-            }
-            if (v == 0.0f) {
-                v = 1.0f;
-            }
-            params.expert_target_p_min = v;
-        }
-    ).set_env("LLAMA_ARG_EXPERT_TARGET_P_MIN"));
-    add_opt(common_arg(
-        {"-etpmax", "--expert-target-p-max"}, "F",
-        "max target cumulative routing probability mass (0.0 to 1.0, default: 1.0; 0 or 1.0 disables early exit)",
-        [](common_params & params, const std::string & value) {
-            float v = std::stof(value);
-            if (v < 0.0f || v > 1.0f) {
-                throw std::invalid_argument("invalid value (must be between 0.0 and 1.0)");
-            }
-            if (v == 0.0f) {
-                v = 1.0f;
-            }
-            params.expert_target_p_max = v;
-        }
-    ).set_env("LLAMA_ARG_EXPERT_TARGET_P_MAX"));
-    add_opt(common_arg(
-        {"-etpdd", "--expert-target-p-depth-delta", "--expert-depth-delta"}, "F",
-        "depth-based slope for target-p across layers (0.0 to 0.5, default: 0.0, 0 to disable)",
-        [](common_params & params, const std::string & value) {
-            const float v = std::stof(value);
-            if (v < 0.0f || v > 0.5f) {
-                throw std::invalid_argument("invalid value (must be between 0.0 and 0.5)");
-            }
-            params.expert_target_p_depth_delta = v;
-        }
-    ).set_env("LLAMA_ARG_EXPERT_TARGET_P_DEPTH_DELTA"));
+    ).set_env("LLAMA_ARG_EXPERT_EARLY_EXIT"));
     add_opt(common_arg(
         {"-eiw", "--expert-imatrix-weight"}, "F",
         "persistent imatrix score weight in expert retention (0.0 to 1.0, default: 0.0, 0 to disable)",

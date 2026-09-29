@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstring>
 #include <cinttypes>
+#include <filesystem>
 #include <fstream>
 #include <mutex>
 #include <regex>
@@ -906,6 +907,100 @@ static void init_quantize_state_counters(quantize_state_impl & qs, std::vector<t
     qs.n_ffn_down = qs.n_ffn_gate = qs.n_ffn_up = (int)qs.model.hparams.n_layer_all;
 }
 
+// validate existing split file against expected structure before skipping
+static bool llama_quant_validate_existing_split(
+        const std::string & fname,
+        int split_idx,
+        const std::vector<const llama_model_loader::llama_tensor_weight *> & tensors,
+        const std::vector<tensor_metadata> & metadata,
+        bool keep_split,
+        std::string & err_reason) {
+    std::error_code ec;
+    if (!std::filesystem::exists(fname, ec) || !std::filesystem::is_regular_file(fname, ec)) {
+        err_reason = "file does not exist";
+        return false;
+    }
+
+    const uintmax_t file_size = std::filesystem::file_size(fname, ec);
+    if (ec || file_size == 0) {
+        err_reason = "file is empty or unreadable";
+        return false;
+    }
+
+    struct gguf_init_params p = { /* .no_alloc = */ true, /* .ctx = */ nullptr };
+    struct gguf_context * ctx = gguf_init_from_file(fname.c_str(), p);
+    if (!ctx) {
+        err_reason = "invalid or incomplete GGUF header";
+        return false;
+    }
+
+    int64_t expected_tensors = 0;
+    for (size_t i = 0; i < tensors.size(); ++i) {
+        const uint16_t s_idx = keep_split ? tensors[i]->idx : 0;
+        if (s_idx == (uint16_t)split_idx) {
+            expected_tensors++;
+        }
+    }
+
+    const int64_t actual_tensors = gguf_get_n_tensors(ctx);
+    if (actual_tensors != expected_tensors) {
+        err_reason = format("tensor count mismatch (expected %lld, found %lld)",
+                            (long long)expected_tensors, (long long)actual_tensors);
+        gguf_free(ctx);
+        return false;
+    }
+
+    const size_t data_offset = gguf_get_data_offset(ctx);
+
+    for (size_t i = 0; i < tensors.size(); ++i) {
+        const uint16_t s_idx = keep_split ? tensors[i]->idx : 0;
+        if (s_idx != (uint16_t)split_idx) {
+            continue;
+        }
+
+        const auto * tensor = tensors[i]->tensor;
+        const char * tname = metadata[i].name.c_str();
+        const int64_t tid = gguf_find_tensor(ctx, tname);
+
+        if (tid < 0) {
+            err_reason = format("missing tensor '%s'", tname);
+            gguf_free(ctx);
+            return false;
+        }
+
+        const ggml_type exist_type = gguf_get_tensor_type(ctx, tid);
+        const ggml_type target_type = metadata[i].target_type;
+        if (exist_type != target_type) {
+            err_reason = format("tensor '%s' type mismatch (expected %s, found %s)",
+                                tname, ggml_type_name(target_type), ggml_type_name(exist_type));
+            gguf_free(ctx);
+            return false;
+        }
+
+        const int64_t * exist_ne = gguf_get_tensor_ne(ctx, tid);
+        for (int d = 0; d < GGML_MAX_DIMS; ++d) {
+            if (exist_ne[d] != tensor->ne[d]) {
+                err_reason = format("tensor '%s' shape mismatch at dim %d (expected %lld, found %lld)",
+                                    tname, d, (long long)tensor->ne[d], (long long)exist_ne[d]);
+                gguf_free(ctx);
+                return false;
+            }
+        }
+
+        const size_t t_offset = gguf_get_tensor_offset(ctx, tid);
+        const size_t t_size   = gguf_get_tensor_size(ctx, tid);
+        const size_t end_offs = data_offset + t_offset + t_size;
+        if (end_offs < t_offset || end_offs > (size_t)file_size) {
+            err_reason = format("tensor '%s' data exceeds file bounds (truncated file)", tname);
+            gguf_free(ctx);
+            return false;
+        }
+    }
+
+    gguf_free(ctx);
+    return true;
+}
+
 //
 // main quantization driver
 //
@@ -1067,6 +1162,8 @@ static void llama_model_quantize_impl(const std::string & fname_inp, const std::
     std::vector<gguf_context_ptr> ctx_outs(n_split);
     ctx_outs[0] = std::move(ctx_out);
 
+    std::vector<bool> split_was_skipped(n_split, false);
+
     // flag for --dry-run
     bool will_require_imatrix = false;
 
@@ -1133,10 +1230,11 @@ static void llama_model_quantize_impl(const std::string & fname_inp, const std::
     const size_t max_buf_size = params->max_buf_size ? params->max_buf_size : LLAMA_QUANT_MAX_BUF_SIZE;
 
     int cur_split = -1;
+    bool split_skipped = false;
     std::ofstream fout;
     auto close_ofstream = [&]() {
         // Write metadata and close file handler
-        if (fout.is_open()) {
+        if (!split_skipped && fout.is_open()) {
             fout.seekp(0);
             std::vector<uint8_t> data(gguf_get_meta_size(ctx_outs[cur_split].get()));
             gguf_get_meta_data(ctx_outs[cur_split].get(), data.data());
@@ -1146,12 +1244,36 @@ static void llama_model_quantize_impl(const std::string & fname_inp, const std::
     };
     auto new_ofstream = [&](int index) {
         cur_split = index;
+        split_skipped = false;
         GGML_ASSERT(ctx_outs[cur_split] && "Find uninitialized gguf_context");
         std::string fname = fname_out;
         if (params->keep_split) {
             std::vector<char> split_path(llama_path_max(), 0);
             llama_split_path(split_path.data(), split_path.size(), fname_out.c_str(), cur_split, n_split);
             fname = std::string(split_path.data());
+        }
+
+        if (params->skip_existing && params->keep_split) {
+            std::error_code ec;
+            if (std::filesystem::exists(fname, ec)) {
+                std::string err_reason;
+                if (llama_quant_validate_existing_split(fname, cur_split, tensors, metadata, params->keep_split, err_reason)) {
+                    split_skipped = true;
+                    if (cur_split >= 0 && cur_split < (int)n_split) {
+                        split_was_skipped[cur_split] = true;
+                    }
+                    LLAMA_LOG_INFO("\n*** split %d (%s) already exists and matches expected structure, skipping!\n\n",
+                                   cur_split, fname.c_str());
+                    return;
+                }
+                LLAMA_LOG_WARN("\n*** split %d (%s) mismatch or corrupted: %s. Deleting and re-generating!\n\n",
+                               cur_split, fname.c_str(), err_reason.c_str());
+                std::filesystem::remove(fname, ec);
+            }
+        }
+
+        if (cur_split >= 0 && cur_split < (int)n_split) {
+            split_was_skipped[cur_split] = false;
         }
 
         fout = std::ofstream(fname, std::ios::binary);
@@ -1181,6 +1303,20 @@ static void llama_model_quantize_impl(const std::string & fname_inp, const std::
         }
 
         const size_t tensor_size = ggml_nbytes(tensor);
+
+        if (split_skipped) {
+            const ggml_type new_type = tm.target_type;
+            const size_t new_size = (tensor->type == new_type) ? tensor_size :
+                ggml_nrows(tensor) * ggml_row_size(new_type, tensor->ne[0]);
+            LLAMA_LOG_INFO("[%4d/%4d] %-36s - [%s], type = %6s (skipped, split exists)\n",
+                   ++idx, ml.n_tensors,
+                   ggml_get_name(tensor),
+                   llama_format_tensor_shape(tensor).c_str(),
+                   ggml_type_name(new_type));
+            total_size_org += tensor_size;
+            total_size_new += new_size;
+            continue;
+        }
 
         // read a byte range of the current tensor
         auto load_range = [&](size_t offs, size_t size) -> const void * {
@@ -1346,6 +1482,38 @@ static void llama_model_quantize_impl(const std::string & fname_inp, const std::
     LLAMA_LOG_INFO("%s: model size  = %8.2f MiB (%.2f BPW)\n", __func__, total_size_org/1024.0/1024.0, total_size_org*8.0/ml.n_elements);
     LLAMA_LOG_INFO("%s: quant size  = %8.2f MiB (%.2f BPW)\n", __func__, total_size_new/1024.0/1024.0, total_size_new*8.0/ml.n_elements);
 
+    if (params->keep_split && !params->dry_run) {
+        std::vector<int> skipped_shards;
+        std::vector<int> written_shards;
+        for (int s = 0; s < (int)n_split; ++s) {
+            if (split_was_skipped[s]) {
+                skipped_shards.push_back(s + 1);
+            } else {
+                written_shards.push_back(s + 1);
+            }
+        }
+
+        std::string skipped_str;
+        for (size_t s = 0; s < skipped_shards.size(); ++s) {
+            if (s > 0) skipped_str += ", ";
+            skipped_str += std::to_string(skipped_shards[s]);
+        }
+        if (skipped_str.empty()) skipped_str = "none";
+
+        std::string written_str;
+        for (size_t s = 0; s < written_shards.size(); ++s) {
+            if (s > 0) written_str += ", ";
+            written_str += std::to_string(written_shards[s]);
+        }
+        if (written_str.empty()) written_str = "none";
+
+        LLAMA_LOG_INFO("\n");
+        LLAMA_LOG_INFO("==================== Shard Generation Summary (%d total) ====================\n", n_split);
+        LLAMA_LOG_INFO("  Shards skipped (valid & existing) : [%s] (%zu/%d)\n", skipped_str.c_str(), skipped_shards.size(), n_split);
+        LLAMA_LOG_INFO("  Shards written (new or recreated) : [%s] (%zu/%d)\n", written_str.c_str(), written_shards.size(), n_split);
+        LLAMA_LOG_INFO("===============================================================================\n\n");
+    }
+
     if (!params->imatrix && params->dry_run && will_require_imatrix) {
         LLAMA_LOG_WARN("%s: WARNING: dry run completed successfully, but actually completing this quantization will require an imatrix!\n",
                        __func__
@@ -1373,6 +1541,7 @@ llama_model_quantize_params llama_model_quantize_default_params() {
         /*.only_copy                   =*/ false,
         /*.pure                        =*/ false,
         /*.keep_split                  =*/ false,
+        /*.skip_existing               =*/ false,
         /*.dry_run                     =*/ false,
         /*.imatrix                     =*/ nullptr,
         /*.kv_overrides                =*/ nullptr,

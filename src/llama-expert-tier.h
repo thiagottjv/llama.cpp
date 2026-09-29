@@ -17,15 +17,14 @@ struct llama_model;
 // Initialize expert tier for the given model.
 // layer_expert_order: optional per-layer ranking of expert IDs (descending importance).
 // layer_hot_s: number of hot experts allocated per layer.
-// target_p_min, target_p_max: cumulative probability range (equal for fixed target, default: 1.0 = disabled).
+// layer_target_p_min, layer_target_p_max: per-layer target cumulative probability range (nullptr = 1.0).
 // layer_scores_norm: per-layer normalized global scores [0.0, 1.0] for active experts.
 bool llama_expert_tier_init(llama_model * model,
                             const std::vector<std::vector<int>> & layer_expert_order,
                             const std::vector<int> & layer_hot_s,
-                            float target_p_min = 1.0f,
-                            float target_p_max = 1.0f,
-                            const std::vector<std::vector<float>> & layer_scores_norm = {},
-                            float target_p_depth_delta = 0.0f);
+                            const float * layer_target_p_min = nullptr,
+                            const float * layer_target_p_max = nullptr,
+                            const std::vector<std::vector<float>> & layer_scores_norm = {});
 
 // Clear and free all expert tier structures and VRAM buffers.
 void llama_expert_tier_free();

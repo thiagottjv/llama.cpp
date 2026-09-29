@@ -440,6 +440,7 @@ extern "C" {
         bool only_copy;                                             // only copy tensors - ftype, allow_requantize and quantize_output_tensor are ignored
         bool pure;                                                  // quantize all tensors to the default type
         bool keep_split;                                            // quantize to the same number of shards
+        bool skip_existing;                                         // skip writing split files that already exist
         bool dry_run;                                               // calculate and show the final quantization size without performing quantization
         const struct llama_model_imatrix_data * imatrix;            // pointer to importance matrix data
         const struct llama_model_kv_override * kv_overrides;        // pointer to kv overrides
@@ -1647,10 +1648,9 @@ extern "C" {
             const int32_t      * expert_order,
             size_t               n_expert_order,
             const int32_t      * layer_hot_s,
-            float                target_p_min,
-            float                target_p_max,
-            const float        * layer_scores_norm,
-            float                target_p_depth_delta);
+            const float        * layer_target_p_min,
+            const float        * layer_target_p_max,
+            const float        * layer_scores_norm);
 
     LLAMA_API void llama_model_free_expert_tier(void);
 

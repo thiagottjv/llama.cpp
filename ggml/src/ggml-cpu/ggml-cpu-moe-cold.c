@@ -107,7 +107,7 @@ static uint64_t moe_cold_active_slot_mask(
         return 0;
     }
 
-    // Dynamic early exit interpolation based on global expert scores (fixed when min == max)
+    // Dynamic token difficulty scaling between target_p_min and target_p_max
     float effective_target_p = target_p_max;
     if (target_p_max > target_p_min && exp_scores && total_w > 0.0f) {
         float avg_score = weighted_score_sum / total_w;
