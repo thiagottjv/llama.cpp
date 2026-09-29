@@ -141,13 +141,6 @@ flake.lock
 /run-chat.sh
 /run-spec.sh
 /.ccache/
-# Benchmarking, simulators and temporary documentation
-/*.html
-/tabela_eficiencia_*.md
-/guia_otimizacao_*.md
-/tensor_types_*.txt
-/sweep_bench_*.json
-/docs/development/moe-expert-tier-improvements.md
 
 # IDE
 

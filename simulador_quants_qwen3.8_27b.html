@@ -1,0 +1,1699 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+  <meta name="theme-color" content="#0d1117">
+  <title>Simulador de Quantizacao e VRAM: Qwen3.8-27B</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card-bg: #161b22;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --text-muted: #8b949e;
+      --text-bright: #f0f6fc;
+      --accent: #58a6ff;
+      --accent-hover: #79c0ff;
+      --success: #3fb950;
+      --warning: #d29922;
+      --danger: #f85149;
+      --purple: #bc8cff;
+      --orange: #f0883e;
+      --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    /* Universal zero-overflow reset */
+    html {
+      box-sizing: border-box;
+      width: 100%;
+      max-width: 100%;
+      overflow-x: hidden;
+    }
+
+    *, *::before, *::after {
+      box-sizing: inherit;
+      margin: 0;
+      padding: 0;
+      min-width: 0; /* Prevents grid & flex children from overflowing parent! */
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      line-height: 1.5;
+      padding: 16px 12px 75px 12px;
+      width: 100%;
+      max-width: 100%;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1480px;
+      margin: 0 auto;
+      min-width: 0;
+    }
+
+    header {
+      margin-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 10px;
+      width: 100%;
+    }
+
+    header h1 {
+      color: var(--text-bright);
+      font-size: 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      word-break: break-word;
+    }
+
+    .badges-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      font-size: 0.72rem;
+      padding: 2px 7px;
+      border-radius: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      background: rgba(88, 166, 255, 0.15);
+      color: var(--accent);
+      border: 1px solid rgba(88, 166, 255, 0.3);
+      white-space: nowrap;
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 0.86rem;
+      margin-top: 4px;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 14px;
+      width: 100%;
+      min-width: 0;
+    }
+
+    @media (max-width: 1080px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      width: 100%;
+      min-width: 0;
+      overflow: hidden; /* Hard guarantee: card cannot blow out page width */
+    }
+
+    .card-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text-bright);
+      margin-bottom: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .presets-container {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+      align-items: center;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .presets-label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    button {
+      background: #21262d;
+      color: var(--text-bright);
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 500;
+      transition: all 0.15s ease;
+      touch-action: manipulation;
+    }
+
+    button:hover {
+      background: #30363d;
+      border-color: #8b949e;
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    button.primary {
+      background: #238636;
+      border-color: #2ea043;
+      color: #fff;
+    }
+    button.primary:hover {
+      background: #2ea043;
+    }
+
+    button.active {
+      background: var(--accent) !important;
+      color: #0d1117 !important;
+      font-weight: 700 !important;
+      border-color: var(--accent-hover) !important;
+      box-shadow: 0 0 10px rgba(88, 166, 255, 0.4);
+    }
+
+    button.mini {
+      padding: 3px 8px;
+      font-size: 0.75rem;
+    }
+
+    .btn-title {
+      font-weight: 700;
+      display: block;
+    }
+
+    .btn-sub {
+      font-size: 0.65rem;
+      opacity: 0.75;
+      display: block;
+    }
+
+    .toast-msg {
+      font-size: 0.72rem;
+      color: var(--accent);
+      font-weight: 600;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+      background: rgba(88, 166, 255, 0.1);
+      padding: 3px 8px;
+      border-radius: 4px;
+      border: 1px solid rgba(88, 166, 255, 0.3);
+      white-space: nowrap;
+    }
+
+    .toast-msg.show {
+      opacity: 1;
+    }
+
+    textarea {
+      width: 100%;
+      height: 150px;
+      background: #0d1117;
+      color: #79c0ff;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      resize: vertical;
+      line-height: 1.4;
+      white-space: pre;
+      max-width: 100%;
+    }
+
+    textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.2);
+    }
+
+    /* Controls Panel */
+    .controls-panel {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+      margin-top: 10px;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .param-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .param-group label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    select, input[type="text"], input[type="number"] {
+      background: #161b22;
+      color: var(--text-bright);
+      border: 1px solid var(--border);
+      padding: 6px 8px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-family: var(--font-mono);
+      min-height: 36px;
+      width: 100%;
+      max-width: 100%;
+    }
+
+    select:focus, input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .ctx-quick-btns {
+      display: flex;
+      gap: 3px;
+      margin-top: 2px;
+      width: 100%;
+    }
+
+    .ctx-quick-btns button {
+      flex: 1;
+      padding: 3px 2px;
+      font-size: 0.72rem;
+      min-height: 28px;
+      text-align: center;
+    }
+
+    /* Options Row */
+    .options-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-top: 10px;
+      flex-wrap: wrap;
+      width: 100%;
+    }
+
+    .touch-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #0d1117;
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      font-size: 0.78rem;
+      cursor: pointer;
+      user-select: none;
+      touch-action: manipulation;
+    }
+
+    .touch-toggle input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      accent-color: var(--accent);
+    }
+
+    /* Metrics Grid */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      width: 100%;
+    }
+
+    .metric-box {
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 6px;
+      text-align: center;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .metric-label {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 2px;
+    }
+
+    .metric-val {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text-bright);
+      font-family: var(--font-mono);
+      word-break: break-word;
+    }
+
+    .metric-sub {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* Multi-segment VRAM Progress Bar */
+    .vram-section {
+      margin-top: 10px;
+      padding: 10px;
+      border-radius: 6px;
+      background: #0d1117;
+      border: 1px solid var(--border);
+      width: 100%;
+    }
+
+    .vram-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      flex-wrap: wrap;
+      gap: 4px;
+      width: 100%;
+    }
+
+    .multi-bar {
+      height: 22px;
+      background: #21262d;
+      border-radius: 6px;
+      overflow: hidden;
+      display: flex;
+      border: 1px solid #30363d;
+      position: relative;
+      width: 100%;
+    }
+
+    .bar-seg {
+      height: 100%;
+      transition: width 0.3s ease;
+    }
+
+    .seg-weights { background: #238636; }
+    .seg-ctx { background: #8957e5; }
+    .seg-ubatch { background: #d29922; }
+    .seg-cuda { background: #1f6feb; }
+
+    .vram-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+      font-size: 0.74rem;
+      align-items: center;
+      width: 100%;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    .alloc-box {
+      margin-top: 10px;
+      padding: 8px 10px;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      width: 100%;
+    }
+
+    .alloc-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+      gap: 6px;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+
+    .alloc-row:last-child { margin-bottom: 0; }
+
+    /* CLI Preview Box */
+    .cli-box {
+      margin-top: 10px;
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: #79c0ff;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .cli-text {
+      overflow-x: auto;
+      white-space: nowrap;
+      flex: 1;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 2px;
+      min-width: 0; /* Essential flex-shrink fix */
+    }
+
+    /* Types breakdown chips */
+    .types-summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 8px;
+      width: 100%;
+    }
+
+    .type-chip {
+      font-size: 0.72rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #21262d;
+      border: 1px solid var(--border);
+      font-family: var(--font-mono);
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .type-chip span.count {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* Table Container with Native Horizontal Scroll Guarantee */
+    .table-container {
+      max-height: 520px;
+      overflow-y: auto;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-top: 10px;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+      font-family: var(--font-mono);
+      min-width: 100%;
+    }
+
+    thead {
+      background: #161b22;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      box-shadow: 0 1px 0 var(--border);
+    }
+
+    th, td {
+      padding: 6px 8px;
+      text-align: left;
+      border-bottom: 1px solid #21262d;
+    }
+
+    th {
+      color: var(--text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.7rem;
+    }
+
+    tr:hover {
+      background: rgba(88, 166, 255, 0.05);
+    }
+
+    .quant-badge {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 0.72rem;
+      white-space: nowrap;
+    }
+
+    .dev-badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 0.68rem;
+      letter-spacing: 0.3px;
+      white-space: nowrap;
+    }
+
+    .dev-gpu {
+      background: rgba(63, 185, 80, 0.15);
+      color: var(--success);
+      border: 1px solid rgba(63, 185, 80, 0.4);
+    }
+
+    .dev-cpu {
+      background: rgba(210, 153, 34, 0.15);
+      color: var(--warning);
+      border: 1px solid rgba(210, 153, 34, 0.4);
+    }
+
+    .q-f32 { background: #388bfd33; color: #58a6ff; }
+    .q-q8_0 { background: #23863633; color: #3fb950; }
+    .q-q6_k { background: #1f6feb33; color: #58a6ff; }
+    .q-q5_k, .q-q5_1, .q-q5_0 { background: #a371f733; color: #bc8cff; }
+    .q-q4_k, .q-q4_0, .q-iq4_xs, .q-iq4_nl { background: #d2992233; color: #d29922; }
+    .q-q3_k, .q-iq3_s, .q-iq3_xxs { background: #db6d2833; color: #f0883e; }
+    .q-q2_k, .q-iq2_s, .q-iq2_xs, .q-iq2_xxs { background: #f8514933; color: #f85149; }
+    .q-iq1_s, .q-iq1_m { background: #da363344; color: #ff7b72; }
+
+    .search-bar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-top: 10px;
+      flex-wrap: wrap;
+      width: 100%;
+    }
+
+    .search-input {
+      flex: 1;
+      min-width: 180px;
+      padding: 6px 10px;
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-bright);
+      font-size: 0.85rem;
+    }
+
+    .filter-tabs {
+      display: flex;
+      gap: 4px;
+    }
+
+    /* Mobile Sticky Bar */
+    .mobile-sticky-bar {
+      display: none;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(22, 27, 34, 0.95);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border-top: 1px solid var(--border);
+      padding: 8px 12px;
+      z-index: 100;
+      box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.4);
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.8rem;
+      width: 100%;
+    }
+
+    .mobile-sticky-info {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    /* ---------------- Strict Mobile Media Queries ---------------- */
+    @media (max-width: 768px) {
+      body {
+        padding: 10px 8px 75px 8px;
+        overflow-x: hidden;
+      }
+
+      header h1 {
+        font-size: 1.2rem;
+        gap: 6px;
+      }
+
+      .badge {
+        font-size: 0.65rem;
+        padding: 1px 6px;
+      }
+
+      .subtitle {
+        font-size: 0.78rem;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+        width: 100%;
+      }
+
+      .card {
+        padding: 10px 8px;
+        width: 100%;
+        overflow: hidden;
+      }
+
+      .card-title {
+        font-size: 0.9rem;
+      }
+
+      /* Presets: 2x2 grid + 1 full width button */
+      .presets-container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+        width: 100%;
+      }
+
+      .presets-label {
+        grid-column: 1 / -1;
+        margin-bottom: 1px;
+      }
+
+      .presets-container button {
+        padding: 6px 4px;
+        min-height: 42px;
+        font-size: 0.74rem;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+      }
+
+      #btn_pure_q2_k {
+        grid-column: 1 / -1;
+      }
+
+      .toast-msg {
+        grid-column: 1 / -1;
+        text-align: center;
+        padding: 4px 8px;
+      }
+
+      textarea {
+        height: 120px;
+        font-size: 14px; /* Prevents auto-zoom on iOS */
+        padding: 8px;
+      }
+
+      /* Single column controls panel on mobile to guarantee ZERO overflow */
+      .controls-panel {
+        grid-template-columns: 1fr;
+        gap: 8px;
+        padding: 8px;
+        width: 100%;
+      }
+
+      .param-group label {
+        font-size: 0.72rem;
+      }
+
+      select, input[type="text"], input[type="number"] {
+        font-size: 14px;
+        padding: 6px 8px;
+        min-height: 38px;
+        width: 100%;
+      }
+
+      .ctx-quick-btns {
+        width: 100%;
+      }
+
+      .ctx-quick-btns button {
+        min-height: 32px;
+        font-size: 0.74rem;
+        flex: 1;
+      }
+
+      /* Stack options vertically on mobile */
+      .options-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        width: 100%;
+      }
+
+      .touch-toggle {
+        justify-content: center;
+        min-height: 38px;
+        font-size: 0.8rem;
+        width: 100%;
+      }
+
+      .options-ngl-box {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+        background: #0d1117;
+        padding: 6px 10px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        min-height: 38px;
+      }
+
+      .btn-recalculate {
+        width: 100%;
+        min-height: 44px;
+        font-size: 0.95rem;
+        font-weight: 700;
+      }
+
+      /* Metrics Grid */
+      .metrics-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+        width: 100%;
+      }
+
+      .metric-box {
+        padding: 8px 4px;
+      }
+
+      .metric-label {
+        font-size: 0.65rem;
+      }
+
+      .metric-val {
+        font-size: 1.12rem;
+      }
+
+      .metric-sub {
+        font-size: 0.65rem;
+      }
+
+      /* VRAM Section */
+      .vram-section {
+        padding: 8px 6px;
+        width: 100%;
+      }
+
+      .vram-header {
+        font-size: 0.74rem;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+      }
+
+      .vram-legend {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+        font-size: 0.7rem;
+        width: 100%;
+      }
+
+      .legend-free-item {
+        grid-column: 1 / -1;
+        margin-left: 0 !important;
+        padding-top: 4px;
+        border-top: 1px solid #21262d;
+      }
+
+      .alloc-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+        margin-bottom: 6px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid #21262d;
+        width: 100%;
+      }
+
+      .alloc-row:last-child {
+        margin-bottom: 0;
+        padding-bottom: 0;
+        border-bottom: none;
+      }
+
+      /* CLI Box */
+      .cli-box {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        padding: 8px;
+        width: 100%;
+      }
+
+      .cli-box button {
+        width: 100%;
+        min-height: 38px;
+      }
+
+      /* Search & Filter Bar */
+      .search-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        width: 100%;
+      }
+
+      .search-input {
+        width: 100%;
+        font-size: 14px;
+        min-height: 38px;
+      }
+
+      .filter-tabs {
+        width: 100%;
+        display: flex;
+      }
+
+      .filter-tabs button {
+        flex: 1;
+        text-align: center;
+        padding: 8px 4px;
+        min-height: 36px;
+        font-size: 0.75rem;
+      }
+
+      /* Hide non-essential table columns on mobile so it fits naturally */
+      .col-hide-mobile {
+        display: none !important;
+      }
+
+      .col-tensor-name {
+        max-width: 130px;
+        word-break: break-all;
+        overflow-wrap: anywhere;
+        font-size: 0.72rem;
+      }
+
+      th, td {
+        padding: 6px 4px;
+        font-size: 0.72rem;
+      }
+
+      /* Show mobile sticky bar */
+      .mobile-sticky-bar {
+        display: flex;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container" id="topContainer">
+    <header>
+      <h1>
+        Simulador Qwen3.8-27B
+        <div class="badges-row">
+          <span class="badge">Dense Hibrido</span>
+          <span class="badge">866 Tensores</span>
+          <span class="badge" style="color: var(--success); border-color: rgba(63, 185, 80, 0.4);">RTX 3080 10GB</span>
+        </div>
+      </h1>
+      <p class="subtitle">
+        Calcule o tamanho dos pesos e simule o impacto real de <code>-c</code> (Contexto), <code>-ub</code> (Micro-Batch) e <code>-ngl</code> na VRAM da GPU.
+      </p>
+    </header>
+
+    <div class="grid">
+      <!-- Input Card -->
+      <div class="card">
+        <div class="card-title">
+          <span>1. Regras de Quantizacao (Regex / CLI)</span>
+        </div>
+
+        <div class="presets-container">
+          <span class="presets-label">Presets:</span>
+          <button id="btn_ud_q2_k_xl" onclick="loadPreset('ud_q2_k_xl', this)">
+            <span class="btn-title">UD-Q2_K_XL</span>
+            <span class="btn-sub">Pergunta</span>
+          </button>
+          <button id="btn_ud_iq4_xs" onclick="loadPreset('ud_iq4_xs', this)">
+            <span class="btn-title">UD-IQ4_XS</span>
+            <span class="btn-sub">Raciocinio</span>
+          </button>
+          <button id="btn_ud_iq3_s" onclick="loadPreset('ud_iq3_s', this)">
+            <span class="btn-title">UD-IQ3_S</span>
+            <span class="btn-sub">Equilibrado</span>
+          </button>
+          <button id="btn_pure_q4_k_m" onclick="loadPreset('pure_q4_k_m', this)">
+            <span class="btn-title">Puro Q4_K_M</span>
+            <span class="btn-sub">Uniforme</span>
+          </button>
+          <button id="btn_pure_q2_k" onclick="loadPreset('pure_q2_k', this)">
+            <span class="btn-title">Puro Q2_K</span>
+            <span class="btn-sub">Uniforme</span>
+          </button>
+          <span id="toastMsg" class="toast-msg">Preset carregado!</span>
+        </div>
+
+        <textarea id="rulesInput" spellcheck="false" placeholder="Cole aqui seus argumentos --tensor-type ou regras..." oninput="onRulesInput()"></textarea>
+
+        <!-- Parameters Panel (-c, -ub, fallback, ngl) -->
+        <div class="controls-panel">
+          <div class="param-group">
+            <label for="ctxInput">
+              Contexto (-c):
+              <span id="ctxSizeDisplay" style="color: var(--purple);">8.192</span>
+            </label>
+            <input type="number" id="ctxInput" value="8192" step="1024" min="1024" max="131072" onchange="runSimulation()">
+            <div class="ctx-quick-btns">
+              <button class="mini" onclick="setCtx(4096)">4k</button>
+              <button class="mini" onclick="setCtx(8192)">8k</button>
+              <button class="mini" onclick="setCtx(16384)">16k</button>
+              <button class="mini" onclick="setCtx(32768)">32k</button>
+              <button class="mini" onclick="setCtx(65536)">64k</button>
+            </div>
+          </div>
+
+          <div class="param-group">
+            <label for="ubatchInput">
+              Micro-Batch (-ub):
+              <span id="ubatchDisplay" style="color: var(--orange);">512</span>
+            </label>
+            <select id="ubatchInput" onchange="runSimulation()">
+              <option value="256">256 (Menor VRAM)</option>
+              <option value="512" selected>512 (Padrao Rec.)</option>
+              <option value="1024">1024 (Prompt rapido)</option>
+              <option value="2048">2048 (Servidor)</option>
+            </select>
+          </div>
+
+          <div class="param-group">
+            <label for="kvQuantType">Quant KV (-ctk/-ctv):</label>
+            <select id="kvQuantType" onchange="runSimulation()">
+              <option value="q8_0" selected>Q8_0 (~34 KB/t - Rec.)</option>
+              <option value="f16">F16 (64 KB/t)</option>
+              <option value="q4_0">Q4_0 (~18 KB/t)</option>
+            </select>
+          </div>
+
+          <div class="param-group">
+            <label for="fallbackType">Fallback Quant:</label>
+            <select id="fallbackType" onchange="runSimulation()">
+              <option value="q2_k" selected>Q2_K (Padrao)</option>
+              <option value="q3_k">Q3_K_M</option>
+              <option value="q4_k">Q4_K_M</option>
+              <option value="q4_0">Q4_0</option>
+              <option value="q5_k">Q5_K_M</option>
+              <option value="q6_k">Q6_K</option>
+              <option value="q8_0">Q8_0</option>
+              <option value="iq4_xs">IQ4_XS</option>
+              <option value="iq3_s">IQ3_S</option>
+              <option value="iq2_s">IQ2_S</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="options-row">
+          <div class="options-ngl-box">
+            <label for="nglInput" style="font-size: 0.78rem; font-weight: 600;">Camadas GPU (-ngl):</label>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="number" id="nglInput" min="0" max="66" value="61" style="width: 52px; text-align: center;" onchange="onNglManualChange()">
+              <label class="touch-toggle" style="padding: 2px 6px;">
+                <input type="checkbox" id="autoNglCheck" checked onchange="onAutoNglToggle()"> Auto
+              </label>
+            </div>
+          </div>
+
+          <label class="touch-toggle">
+            <input type="checkbox" id="tokenEmbdCpuCheck" checked onchange="runSimulation()">
+            <span>-ot token_embd=CPU</span>
+          </label>
+
+          <button class="primary btn-recalculate" onclick="runSimulation()">Recalcular</button>
+        </div>
+      </div>
+
+      <!-- Results Card -->
+      <div class="card" id="metricsCard">
+        <div class="card-title">
+          <span>2. Metricas & Orcamento de VRAM</span>
+          <span id="calcTime" style="font-size: 0.72rem; color: var(--text-muted); font-weight: normal;"></span>
+        </div>
+
+        <div class="metrics-grid">
+          <div class="metric-box">
+            <div class="metric-label">Tamanho Pesos</div>
+            <div class="metric-val" id="totalGb">-- GB</div>
+            <div class="metric-sub" id="totalMb">-- MB</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">Bits por Peso</div>
+            <div class="metric-val" id="totalBpw" style="color: var(--accent);">-- bpw</div>
+            <div class="metric-sub">27.32B Parametros</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">Throughput Est.</div>
+            <div class="metric-val" id="estTps" style="color: var(--success);">-- t/s</div>
+            <div class="metric-sub" id="estLatency">-- ms / tok</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">Inteligencia</div>
+            <div class="metric-val" id="estIq" style="color: var(--purple);">-- pts</div>
+            <div class="metric-sub">Estimativa PPL</div>
+          </div>
+        </div>
+
+        <!-- Detailed Multi-Segment VRAM Bar -->
+        <div class="vram-section">
+          <div class="vram-header">
+            <span>Uso VRAM (RTX 3080: 10.240 MB)</span>
+            <span id="vramTotalText" style="font-family: var(--font-mono);">-- / 10.240 MB</span>
+          </div>
+
+          <div class="multi-bar">
+            <div id="barWeights" class="bar-seg seg-weights" title="Pesos do Modelo" style="width: 0%;"></div>
+            <div id="barCtx" class="bar-seg seg-ctx" title="KV Cache + DeltaNet" style="width: 0%;"></div>
+            <div id="barUbatch" class="bar-seg seg-ubatch" title="Buffer de Ativacoes (UBatch)" style="width: 0%;"></div>
+            <div id="barCuda" class="bar-seg seg-cuda" title="Driver CUDA & Runtime" style="width: 0%;"></div>
+          </div>
+
+          <div class="vram-legend">
+            <div class="legend-item"><div class="legend-dot seg-weights"></div> Pesos GPU: <span id="legWeightsVal" style="color: var(--text-bright); font-weight: 600;">0 MB</span></div>
+            <div class="legend-item"><div class="legend-dot seg-ctx"></div> Contexto: <span id="legCtxVal" style="color: var(--purple); font-weight: 600;">0 MB</span></div>
+            <div class="legend-item"><div class="legend-dot seg-ubatch"></div> Ativacoes: <span id="legUbVal" style="color: var(--orange); font-weight: 600;">0 MB</span></div>
+            <div class="legend-item"><div class="legend-dot seg-cuda"></div> CUDA: <span id="legCudaVal" style="color: var(--accent); font-weight: 600;">400 MB</span></div>
+            <div class="legend-item legend-free-item" style="margin-left: auto;">Livre: <b id="legFreeVal" style="color: var(--text-bright);">-- MB</b></div>
+          </div>
+
+          <div class="alloc-box" id="allocDetailBox">
+            <div class="alloc-row">
+              <span style="color: var(--warning); font-weight: 600;">RAM DDR4:</span>
+              <span id="allocRamText" style="font-family: var(--font-mono);">--</span>
+            </div>
+            <div class="alloc-row">
+              <span style="color: var(--success); font-weight: 600;">VRAM GDDR6X:</span>
+              <span id="allocGpuText" style="font-family: var(--font-mono);">--</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ready-to-copy CLI Command -->
+        <div class="cli-box">
+          <div class="cli-text" id="cliCommandText">./llama-server -m model.gguf -ngl 61 -c 8192 -ub 512</div>
+          <button class="mini primary" onclick="copyCliCommand()">Copiar</button>
+        </div>
+
+        <div class="types-summary" id="typesBreakdown"></div>
+      </div>
+    </div>
+
+    <!-- Table of all 866 tensors -->
+    <div class="card" id="tensorsCard">
+      <div class="card-title">
+        <span>3. Tensores do Modelo (866)</span>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <button class="mini" onclick="copyTensorTypesFile()">Copiar .txt</button>
+          <button class="mini primary" onclick="downloadTensorTypesFile()">Baixar .txt</button>
+        </div>
+      </div>
+
+      <div class="search-bar">
+        <input type="text" id="searchFilter" class="search-input" placeholder="Filtrar tensor (ex: ffn_gate, ssm, blk.0, output)..." oninput="renderTable()">
+        
+        <div class="filter-tabs">
+          <button id="btnFilterAll" class="active" onclick="setDeviceFilter('all')">Todos (866)</button>
+          <button id="btnFilterRam" onclick="setDeviceFilter('ram')">RAM (<span id="countRamTab">0</span>)</button>
+          <button id="btnFilterGpu" onclick="setDeviceFilter('gpu')">GPU (<span id="countGpuTab">0</span>)</button>
+        </div>
+
+        <span id="filterCount" style="font-size: 0.78rem; color: var(--text-muted); font-family: var(--font-mono);">866 tensores</span>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 32px;">#</th>
+              <th>Nome do Tensor</th>
+              <th>Disp.</th>
+              <th class="col-hide-mobile">Shape</th>
+              <th class="col-hide-mobile">Params</th>
+              <th>Quant</th>
+              <th>Tamanho</th>
+              <th class="col-hide-mobile">Regra</th>
+            </tr>
+          </thead>
+          <tbody id="tensorTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Floating Sticky Bar -->
+  <div class="mobile-sticky-bar" id="mobileStickyBar">
+    <div class="mobile-sticky-info">
+      <div>VRAM: <strong id="stickyVramVal" style="color: var(--text-bright);">--</strong> • <span id="stickyTpsVal" style="color: var(--success); font-weight: 600;">-- t/s</span></div>
+      <div style="font-size: 0.7rem; color: var(--text-muted);" id="stickyLayersVal">-- camadas GPU</div>
+    </div>
+    <div style="display: flex; gap: 6px;">
+      <button class="mini primary" onclick="scrollToTop()">Topo</button>
+    </div>
+  </div>
+
+  <script>
+    const TENSORS_DATA = [{"name": "output.weight", "shape": [5120, 248320], "n_elements": 1271398400, "orig_type": "q4_k"}, {"name": "output_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "token_embd.weight", "shape": [5120, 248320], "n_elements": 1271398400, "orig_type": "q2_k"}, {"name": "blk.0.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_s"}, {"name": "blk.0.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.0.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq3_s"}, {"name": "blk.0.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_xs"}, {"name": "blk.0.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq1_s"}, {"name": "blk.0.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq1_s"}, {"name": "blk.0.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.0.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.0.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.0.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.0.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.0.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.0.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.0.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "q4_k"}, {"name": "blk.1.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.1.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.1.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq2_s"}, {"name": "blk.1.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.1.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq1_s"}, {"name": "blk.1.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq1_s"}, {"name": "blk.1.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.1.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.1.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.1.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.1.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.1.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.1.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.1.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_s"}, {"name": "blk.2.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.2.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.2.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq2_s"}, {"name": "blk.2.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.2.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.2.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.2.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.2.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.2.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.2.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.2.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.2.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.2.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.2.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq4_xs"}, {"name": "blk.3.attn_k.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "iq3_xxs"}, {"name": "blk.3.attn_k_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.3.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.3.attn_output.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "q4_k"}, {"name": "blk.3.attn_q.weight", "shape": [5120, 12288], "n_elements": 62914560, "orig_type": "q2_k"}, {"name": "blk.3.attn_q_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.3.attn_v.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "q4_k"}, {"name": "blk.3.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.3.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xs"}, {"name": "blk.3.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xs"}, {"name": "blk.3.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.4.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq2_s"}, {"name": "blk.4.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.4.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq2_s"}, {"name": "blk.4.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.4.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.4.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.4.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.4.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.4.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.4.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.4.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.4.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.4.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.4.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_s"}, {"name": "blk.5.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.5.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.5.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq2_xxs"}, {"name": "blk.5.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_xs"}, {"name": "blk.5.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.5.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.5.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.5.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.5.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.5.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.5.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.5.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.5.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.5.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.6.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.6.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.6.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq2_xs"}, {"name": "blk.6.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_xs"}, {"name": "blk.6.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.6.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xs"}, {"name": "blk.6.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.6.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.6.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.6.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.6.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.6.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.6.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.6.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.7.attn_k.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "iq3_s"}, {"name": "blk.7.attn_k_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.7.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.7.attn_output.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.7.attn_q.weight", "shape": [5120, 12288], "n_elements": 62914560, "orig_type": "q2_k"}, {"name": "blk.7.attn_q_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.7.attn_v.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "q4_k"}, {"name": "blk.7.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "q2_k"}, {"name": "blk.7.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xs"}, {"name": "blk.7.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xs"}, {"name": "blk.7.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.8.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq2_s"}, {"name": "blk.8.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.8.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq2_xxs"}, {"name": "blk.8.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.8.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.8.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.8.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.8.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.8.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.8.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.8.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.8.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.8.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.8.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq2_s"}, {"name": "blk.9.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq2_s"}, {"name": "blk.9.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.9.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq2_xxs"}, {"name": "blk.9.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.9.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.9.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.9.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.9.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.9.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.9.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.9.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.9.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.9.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.9.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq2_s"}, {"name": "blk.10.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq2_s"}, {"name": "blk.10.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.10.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq2_xxs"}, {"name": "blk.10.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.10.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq1_s"}, {"name": "blk.10.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.10.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.10.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.10.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.10.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.10.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.10.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.10.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.10.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq2_s"}, {"name": "blk.11.attn_k.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "iq3_s"}, {"name": "blk.11.attn_k_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.11.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.11.attn_output.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.11.attn_q.weight", "shape": [5120, 12288], "n_elements": 62914560, "orig_type": "q2_k"}, {"name": "blk.11.attn_q_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.11.attn_v.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "q4_k"}, {"name": "blk.11.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.11.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.11.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.11.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.12.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq2_xs"}, {"name": "blk.12.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.12.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq2_xxs"}, {"name": "blk.12.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.12.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq1_s"}, {"name": "blk.12.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq1_s"}, {"name": "blk.12.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.12.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.12.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.12.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.12.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.12.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.12.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.12.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq2_xs"}, {"name": "blk.13.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq2_xxs"}, {"name": "blk.13.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.13.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq2_xxs"}, {"name": "blk.13.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq1_s"}, {"name": "blk.13.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq1_s"}, {"name": "blk.13.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq1_s"}, {"name": "blk.13.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.13.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.13.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.13.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.13.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.13.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.13.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.13.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq2_xs"}, {"name": "blk.14.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq2_xxs"}, {"name": "blk.14.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.14.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq1_m"}, {"name": "blk.14.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq1_s"}, {"name": "blk.14.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq1_s"}, {"name": "blk.14.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq1_s"}, {"name": "blk.14.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.14.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.14.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.14.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.14.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.14.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.14.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.14.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.15.attn_k.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "iq3_s"}, {"name": "blk.15.attn_k_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.15.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.15.attn_output.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq2_xxs"}, {"name": "blk.15.attn_q.weight", "shape": [5120, 12288], "n_elements": 62914560, "orig_type": "iq2_xxs"}, {"name": "blk.15.attn_q_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.15.attn_v.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "q4_k"}, {"name": "blk.15.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq1_s"}, {"name": "blk.15.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq1_s"}, {"name": "blk.15.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq1_s"}, {"name": "blk.15.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.16.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq2_xxs"}, {"name": "blk.16.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.16.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "q2_k"}, {"name": "blk.16.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.16.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.16.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq1_s"}, {"name": "blk.16.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.16.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.16.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.16.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.16.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.16.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.16.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.16.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq2_s"}, {"name": "blk.17.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq2_xs"}, {"name": "blk.17.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.17.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq2_xs"}, {"name": "blk.17.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.17.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq1_s"}, {"name": "blk.17.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.17.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.17.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.17.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.17.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.17.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.17.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.17.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.17.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq2_xs"}, {"name": "blk.18.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq2_xxs"}, {"name": "blk.18.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.18.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq2_xxs"}, {"name": "blk.18.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_xs"}, {"name": "blk.18.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq1_s"}, {"name": "blk.18.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.18.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.18.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.18.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.18.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.18.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.18.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.18.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.18.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq2_xs"}, {"name": "blk.19.attn_k.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "q3_k"}, {"name": "blk.19.attn_k_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.19.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.19.attn_output.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq2_xs"}, {"name": "blk.19.attn_q.weight", "shape": [5120, 12288], "n_elements": 62914560, "orig_type": "iq2_xxs"}, {"name": "blk.19.attn_q_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.19.attn_v.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "q4_k"}, {"name": "blk.19.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.19.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq1_s"}, {"name": "blk.19.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.19.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.20.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.20.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.20.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq2_s"}, {"name": "blk.20.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.20.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.20.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xs"}, {"name": "blk.20.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.20.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.20.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.20.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.20.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.20.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.20.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.20.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_s"}, {"name": "blk.21.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_s"}, {"name": "blk.21.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.21.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq2_s"}, {"name": "blk.21.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.21.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.21.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.21.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.21.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.21.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.21.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.21.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.21.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.21.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.21.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_s"}, {"name": "blk.22.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.22.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.22.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq2_s"}, {"name": "blk.22.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.22.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xs"}, {"name": "blk.22.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.22.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.22.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.22.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.22.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.22.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.22.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.22.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.22.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.23.attn_k.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "iq3_s"}, {"name": "blk.23.attn_k_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.23.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.23.attn_output.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_s"}, {"name": "blk.23.attn_q.weight", "shape": [5120, 12288], "n_elements": 62914560, "orig_type": "q2_k"}, {"name": "blk.23.attn_q_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.23.attn_v.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "q4_k"}, {"name": "blk.23.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.23.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.23.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.23.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.24.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.24.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.24.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq3_xxs"}, {"name": "blk.24.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "q3_k"}, {"name": "blk.24.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.24.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.24.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.24.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.24.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.24.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.24.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.24.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.24.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.24.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.25.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.25.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.25.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq3_xxs"}, {"name": "blk.25.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq3_s"}, {"name": "blk.25.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.25.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "q3_k"}, {"name": "blk.25.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.25.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.25.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.25.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.25.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.25.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.25.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.25.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "q3_k"}, {"name": "blk.26.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.26.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.26.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq3_s"}, {"name": "blk.26.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.26.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.26.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.26.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.26.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.26.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.26.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.26.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.26.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.26.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.26.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.27.attn_k.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "iq4_xs"}, {"name": "blk.27.attn_k_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.27.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.27.attn_output.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_s"}, {"name": "blk.27.attn_q.weight", "shape": [5120, 12288], "n_elements": 62914560, "orig_type": "iq2_xs"}, {"name": "blk.27.attn_q_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.27.attn_v.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "q4_k"}, {"name": "blk.27.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq3_s"}, {"name": "blk.27.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.27.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.27.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.28.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq2_s"}, {"name": "blk.28.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.28.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq3_xxs"}, {"name": "blk.28.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.28.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xs"}, {"name": "blk.28.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xs"}, {"name": "blk.28.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.28.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.28.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.28.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.28.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.28.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.28.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.28.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.29.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq2_s"}, {"name": "blk.29.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.29.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq2_s"}, {"name": "blk.29.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.29.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.29.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.29.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.29.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.29.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.29.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.29.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.29.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.29.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.29.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.30.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "q2_k"}, {"name": "blk.30.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.30.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq3_xxs"}, {"name": "blk.30.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.30.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xs"}, {"name": "blk.30.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.30.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.30.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.30.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.30.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.30.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.30.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.30.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.30.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.31.attn_k.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "q4_k"}, {"name": "blk.31.attn_k_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.31.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.31.attn_output.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_s"}, {"name": "blk.31.attn_q.weight", "shape": [5120, 12288], "n_elements": 62914560, "orig_type": "q2_k"}, {"name": "blk.31.attn_q_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.31.attn_v.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "q4_k"}, {"name": "blk.31.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.31.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.31.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.31.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.32.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq2_xs"}, {"name": "blk.32.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.32.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq3_xxs"}, {"name": "blk.32.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.32.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.32.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.32.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.32.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.32.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.32.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.32.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.32.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.32.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.32.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.33.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq2_xxs"}, {"name": "blk.33.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.33.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq3_s"}, {"name": "blk.33.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.33.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.33.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.33.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.33.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.33.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.33.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.33.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.33.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.33.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.33.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_s"}, {"name": "blk.34.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.34.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.34.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq3_xxs"}, {"name": "blk.34.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.34.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xs"}, {"name": "blk.34.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.34.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.34.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.34.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.34.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.34.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.34.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.34.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.34.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_s"}, {"name": "blk.35.attn_k.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "q4_k"}, {"name": "blk.35.attn_k_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.35.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.35.attn_output.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq4_xs"}, {"name": "blk.35.attn_q.weight", "shape": [5120, 12288], "n_elements": 62914560, "orig_type": "iq3_xxs"}, {"name": "blk.35.attn_q_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.35.attn_v.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "q4_k"}, {"name": "blk.35.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.35.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.35.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.35.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.36.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq2_xs"}, {"name": "blk.36.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.36.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq2_xs"}, {"name": "blk.36.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.36.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.36.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.36.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.36.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.36.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.36.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.36.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.36.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.36.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.36.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.37.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.37.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.37.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq2_xs"}, {"name": "blk.37.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.37.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.37.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.37.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.37.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.37.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.37.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.37.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.37.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.37.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.37.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.38.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq2_s"}, {"name": "blk.38.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.38.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq2_s"}, {"name": "blk.38.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.38.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.38.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.38.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.38.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.38.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.38.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.38.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.38.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.38.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.38.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq2_s"}, {"name": "blk.39.attn_k.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "iq3_s"}, {"name": "blk.39.attn_k_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.39.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.39.attn_output.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_s"}, {"name": "blk.39.attn_q.weight", "shape": [5120, 12288], "n_elements": 62914560, "orig_type": "q2_k"}, {"name": "blk.39.attn_q_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.39.attn_v.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "q4_k"}, {"name": "blk.39.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.39.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.39.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.39.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.40.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.40.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.40.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq3_xxs"}, {"name": "blk.40.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq3_s"}, {"name": "blk.40.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.40.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.40.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.40.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.40.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.40.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.40.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.40.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.40.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.40.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.41.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.41.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.41.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq2_s"}, {"name": "blk.41.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.41.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.41.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.41.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.41.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.41.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.41.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.41.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.41.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.41.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.41.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_s"}, {"name": "blk.42.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.42.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.42.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq3_xxs"}, {"name": "blk.42.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.42.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.42.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.42.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.42.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.42.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.42.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.42.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.42.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.42.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.42.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.43.attn_k.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "iq4_xs"}, {"name": "blk.43.attn_k_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.43.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.43.attn_output.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_s"}, {"name": "blk.43.attn_q.weight", "shape": [5120, 12288], "n_elements": 62914560, "orig_type": "q2_k"}, {"name": "blk.43.attn_q_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.43.attn_v.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "q4_k"}, {"name": "blk.43.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.43.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.43.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.43.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.44.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.44.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.44.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq3_xxs"}, {"name": "blk.44.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.44.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.44.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.44.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.44.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.44.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.44.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.44.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.44.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.44.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.44.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.45.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq2_xxs"}, {"name": "blk.45.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.45.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "q2_k"}, {"name": "blk.45.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.45.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xs"}, {"name": "blk.45.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.45.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.45.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.45.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.45.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.45.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.45.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.45.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.45.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.46.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "q2_k"}, {"name": "blk.46.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.46.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "q2_k"}, {"name": "blk.46.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.46.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.46.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xs"}, {"name": "blk.46.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.46.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.46.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.46.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.46.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.46.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.46.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.46.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.47.attn_k.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "iq3_s"}, {"name": "blk.47.attn_k_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.47.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.47.attn_output.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_s"}, {"name": "blk.47.attn_q.weight", "shape": [5120, 12288], "n_elements": 62914560, "orig_type": "iq2_xs"}, {"name": "blk.47.attn_q_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.47.attn_v.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "q4_k"}, {"name": "blk.47.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_xs"}, {"name": "blk.47.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xxs"}, {"name": "blk.47.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.47.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.48.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq2_s"}, {"name": "blk.48.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.48.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq3_xxs"}, {"name": "blk.48.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.48.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_xs"}, {"name": "blk.48.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.48.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.48.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.48.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.48.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.48.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.48.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.48.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.48.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_s"}, {"name": "blk.49.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "q2_k"}, {"name": "blk.49.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.49.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq3_xxs"}, {"name": "blk.49.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.49.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "q2_k"}, {"name": "blk.49.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.49.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.49.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.49.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.49.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.49.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.49.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.49.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.49.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.50.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.50.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.50.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq3_xxs"}, {"name": "blk.50.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.50.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.50.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.50.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.50.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.50.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.50.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.50.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.50.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.50.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.50.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "q3_k"}, {"name": "blk.51.attn_k.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "q4_k"}, {"name": "blk.51.attn_k_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.51.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.51.attn_output.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq4_xs"}, {"name": "blk.51.attn_q.weight", "shape": [5120, 12288], "n_elements": 62914560, "orig_type": "iq3_xxs"}, {"name": "blk.51.attn_q_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.51.attn_v.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "q5_k"}, {"name": "blk.51.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq3_s"}, {"name": "blk.51.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq2_s"}, {"name": "blk.51.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.51.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.52.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.52.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.52.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq3_xxs"}, {"name": "blk.52.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq3_s"}, {"name": "blk.52.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.52.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.52.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.52.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.52.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.52.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.52.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.52.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.52.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.52.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_s"}, {"name": "blk.53.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.53.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.53.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq3_xxs"}, {"name": "blk.53.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq3_s"}, {"name": "blk.53.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.53.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.53.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.53.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.53.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.53.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.53.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.53.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.53.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.53.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_s"}, {"name": "blk.54.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.54.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.54.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq2_s"}, {"name": "blk.54.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq3_s"}, {"name": "blk.54.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.54.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.54.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.54.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.54.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.54.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.54.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.54.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.54.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.54.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.55.attn_k.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "iq3_s"}, {"name": "blk.55.attn_k_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.55.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.55.attn_output.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_s"}, {"name": "blk.55.attn_q.weight", "shape": [5120, 12288], "n_elements": 62914560, "orig_type": "iq2_s"}, {"name": "blk.55.attn_q_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.55.attn_v.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "q4_k"}, {"name": "blk.55.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq4_xs"}, {"name": "blk.55.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.55.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_xxs"}, {"name": "blk.55.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.56.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.56.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.56.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq3_xxs"}, {"name": "blk.56.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq4_xs"}, {"name": "blk.56.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_s"}, {"name": "blk.56.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_s"}, {"name": "blk.56.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.56.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.56.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.56.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.56.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.56.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.56.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.56.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq4_xs"}, {"name": "blk.57.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.57.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.57.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq2_s"}, {"name": "blk.57.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq4_xs"}, {"name": "blk.57.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_s"}, {"name": "blk.57.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_s"}, {"name": "blk.57.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.57.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.57.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.57.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.57.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.57.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.57.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.57.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq4_xs"}, {"name": "blk.58.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.58.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.58.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq3_xxs"}, {"name": "blk.58.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq4_xs"}, {"name": "blk.58.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_s"}, {"name": "blk.58.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_s"}, {"name": "blk.58.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.58.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.58.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.58.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.58.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.58.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.58.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.58.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_s"}, {"name": "blk.59.attn_k.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "iq4_xs"}, {"name": "blk.59.attn_k_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.59.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.59.attn_output.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_s"}, {"name": "blk.59.attn_q.weight", "shape": [5120, 12288], "n_elements": 62914560, "orig_type": "iq3_xxs"}, {"name": "blk.59.attn_q_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.59.attn_v.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "q4_k"}, {"name": "blk.59.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq3_s"}, {"name": "blk.59.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq4_xs"}, {"name": "blk.59.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq4_xs"}, {"name": "blk.59.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.60.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.60.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.60.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq3_s"}, {"name": "blk.60.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq3_s"}, {"name": "blk.60.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_s"}, {"name": "blk.60.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_s"}, {"name": "blk.60.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.60.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.60.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.60.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.60.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.60.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.60.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.60.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_s"}, {"name": "blk.61.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.61.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.61.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq3_xxs"}, {"name": "blk.61.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq3_s"}, {"name": "blk.61.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_s"}, {"name": "blk.61.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_s"}, {"name": "blk.61.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.61.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.61.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.61.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.61.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.61.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.61.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.61.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq3_s"}, {"name": "blk.62.attn_gate.weight", "shape": [5120, 6144], "n_elements": 31457280, "orig_type": "iq3_xxs"}, {"name": "blk.62.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.62.attn_qkv.weight", "shape": [5120, 10240], "n_elements": 52428800, "orig_type": "iq3_xxs"}, {"name": "blk.62.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq3_s"}, {"name": "blk.62.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_s"}, {"name": "blk.62.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq3_s"}, {"name": "blk.62.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.62.ssm_a", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.62.ssm_alpha.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.62.ssm_beta.weight", "shape": [5120, 48], "n_elements": 245760, "orig_type": "q8_0"}, {"name": "blk.62.ssm_conv1d.weight", "shape": [4, 10240], "n_elements": 40960, "orig_type": "f32"}, {"name": "blk.62.ssm_dt.bias", "shape": [48], "n_elements": 48, "orig_type": "f32"}, {"name": "blk.62.ssm_norm.weight", "shape": [128], "n_elements": 128, "orig_type": "f32"}, {"name": "blk.62.ssm_out.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq4_xs"}, {"name": "blk.63.attn_k.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "q4_k"}, {"name": "blk.63.attn_k_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.63.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.63.attn_output.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "iq4_xs"}, {"name": "blk.63.attn_q.weight", "shape": [5120, 12288], "n_elements": 62914560, "orig_type": "iq3_xxs"}, {"name": "blk.63.attn_q_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.63.attn_v.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "q5_k"}, {"name": "blk.63.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "iq4_xs"}, {"name": "blk.63.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq4_xs"}, {"name": "blk.63.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "iq4_xs"}, {"name": "blk.63.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.64.attn_k.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "q8_0"}, {"name": "blk.64.attn_k_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.64.attn_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.64.attn_output.weight", "shape": [6144, 5120], "n_elements": 31457280, "orig_type": "q6_k"}, {"name": "blk.64.attn_q.weight", "shape": [5120, 12288], "n_elements": 62914560, "orig_type": "q6_k"}, {"name": "blk.64.attn_q_norm.weight", "shape": [256], "n_elements": 256, "orig_type": "f32"}, {"name": "blk.64.attn_v.weight", "shape": [5120, 1024], "n_elements": 5242880, "orig_type": "q8_0"}, {"name": "blk.64.ffn_down.weight", "shape": [17408, 5120], "n_elements": 89128960, "orig_type": "q6_k"}, {"name": "blk.64.ffn_gate.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "q6_k"}, {"name": "blk.64.ffn_up.weight", "shape": [5120, 17408], "n_elements": 89128960, "orig_type": "q6_k"}, {"name": "blk.64.nextn.eh_proj.weight", "shape": [10240, 5120], "n_elements": 52428800, "orig_type": "q6_k"}, {"name": "blk.64.nextn.enorm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.64.nextn.hnorm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.64.nextn.shared_head_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}, {"name": "blk.64.post_attention_norm.weight", "shape": [5120], "n_elements": 5120, "orig_type": "f32"}];
+    const QUANT_SIZES = {"f32": {"block": 1, "size": 4, "bpw": 32.0}, "f16": {"block": 1, "size": 2, "bpw": 16.0}, "q4_0": {"block": 32, "size": 18, "bpw": 4.5}, "q4_1": {"block": 32, "size": 20, "bpw": 5.0}, "q5_0": {"block": 32, "size": 22, "bpw": 5.5}, "q5_1": {"block": 32, "size": 24, "bpw": 6.0}, "q8_0": {"block": 32, "size": 34, "bpw": 8.5}, "q8_1": {"block": 32, "size": 40, "bpw": 10.0}, "q2_k": {"block": 256, "size": 84, "bpw": 2.625}, "q3_k": {"block": 256, "size": 110, "bpw": 3.4375}, "q4_k": {"block": 256, "size": 144, "bpw": 4.5}, "q5_k": {"block": 256, "size": 176, "bpw": 5.5}, "q6_k": {"block": 256, "size": 210, "bpw": 6.5625}, "q8_k": {"block": 256, "size": 292, "bpw": 9.125}, "iq2_xxs": {"block": 256, "size": 66, "bpw": 2.0625}, "iq2_xs": {"block": 256, "size": 74, "bpw": 2.3125}, "iq3_xxs": {"block": 256, "size": 98, "bpw": 3.0625}, "iq1_s": {"block": 256, "size": 50, "bpw": 1.5625}, "iq4_nl": {"block": 32, "size": 18, "bpw": 4.5}, "iq3_s": {"block": 256, "size": 110, "bpw": 3.4375}, "iq2_s": {"block": 256, "size": 82, "bpw": 2.5625}, "iq4_xs": {"block": 256, "size": 136, "bpw": 4.25}, "i8": {"block": 1, "size": 1, "bpw": 8.0}, "i16": {"block": 1, "size": 2, "bpw": 16.0}, "i32": {"block": 1, "size": 4, "bpw": 32.0}, "i64": {"block": 1, "size": 8, "bpw": 64.0}, "f64": {"block": 1, "size": 8, "bpw": 64.0}, "iq1_m": {"block": 256, "size": 56, "bpw": 1.75}, "bf16": {"block": 1, "size": 2, "bpw": 16.0}, "tq1_0": {"block": 256, "size": 54, "bpw": 1.6875}, "tq2_0": {"block": 256, "size": 66, "bpw": 2.0625}, "mxfp4": {"block": 32, "size": 17, "bpw": 4.25}, "nvfp4": {"block": 64, "size": 36, "bpw": 4.5}, "q1_0": {"block": 128, "size": 18, "bpw": 1.125}, "q2_0": {"block": 64, "size": 18, "bpw": 2.25}};
+    const PRESETS = {
+  "ud_q2_k_xl": "--tensor-type 'output\\.weight=q4_k' `\n  --tensor-type 'token_embd\\.weight=q2_k' `\n  --tensor-type 'blk\\.64\\.attn_[kv]=q8_0' `\n  --tensor-type 'blk\\.64\\..*=q6_k' `\n  --tensor-type 'ssm_(alpha|beta)=q8_0' `\n  --tensor-type 'attn_v=q4_k' `\n  --tensor-type 'blk\\.(5[6-9]|6[0-3])\\.ffn_(gate|up|down)=iq3_s' `\n  --tensor-type 'blk\\.(0|1|1[0-9])\\.ffn_(gate|up)=iq1_s' `\n  --tensor-type 'ffn_(gate|up|down)=iq2_s' `\n  --tensor-type 'attn_(qkv|gate)=iq3_xxs' `\n  --tensor-type 'ssm_out=iq3_s' `\n  --tensor-type '.*=q2_k'",
+  "ud_iq4_xs": "--tensor-type 'output\\.weight=q6_k' `\n  --tensor-type 'token_embd\\.weight=iq4_nl' `\n  --tensor-type 'blk\\.64\\..*=q6_k' `\n  --tensor-type 'ssm_(alpha|beta)=q8_0' `\n  --tensor-type 'blk\\.(0|1|2|6[0-3])\\.ffn_(gate|up|down)=iq4_nl' `\n  --tensor-type 'ffn_(gate|up|down)=iq4_xs' `\n  --tensor-type 'attn_(qkv|gate|output)=q5_k' `\n  --tensor-type '.*=iq4_xs'",
+  "ud_iq3_s": "--tensor-type 'output\\.weight=q5_k' `\n  --tensor-type 'token_embd\\.weight=q3_k' `\n  --tensor-type 'blk\\.64\\..*=q6_k' `\n  --tensor-type 'ssm_(alpha|beta)=q8_0' `\n  --tensor-type 'blk\\.(0|1|6[0-3])\\.ffn_(gate|up|down)=q4_k' `\n  --tensor-type 'ffn_(gate|up|down)=iq3_s' `\n  --tensor-type 'attn_(qkv|gate)=iq3_s' `\n  --tensor-type '.*=iq3_s'",
+  "pure_q4_k_m": "--tensor-type '.*=q4_k'",
+  "pure_q2_k": "--tensor-type '.*=q2_k'"
+};
+
+    const TOTAL_VRAM_MB = 10240; // RTX 3080 10GB GDDR6X
+
+    let calculatedTensors = [];
+    let currentDeviceFilter = "all";
+
+    function scrollToTop() {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function setCtx(val) {
+      document.getElementById("ctxInput").value = val;
+      runSimulation();
+    }
+
+    function onRulesInput() {
+      // Clear preset button highlight when user customizes text
+      document.querySelectorAll('.presets-container button').forEach(b => b.classList.remove('active'));
+      runSimulation();
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById("toastMsg");
+      toast.innerText = msg;
+      toast.classList.add("show");
+      setTimeout(() => {
+        toast.classList.remove("show");
+      }, 2200);
+    }
+
+    function parseRules(text) {
+      const lines = text.split(/\r?\n/);
+      const rules = [];
+
+      for (let rawLine of lines) {
+        let line = rawLine.trim();
+        if (!line || line.startsWith("#")) continue;
+
+        // Strip trailing PowerShell backticks ` or bash backslashes \
+        line = line.replace(/[`\\\\]+$/, "").trim();
+
+        let patternStr = "";
+        let typeStr = "";
+
+        const tensorTypeMatch = line.match(/--tensor-type\s+['"]?([^'"\s]+)['"]?/i);
+        const target = tensorTypeMatch ? tensorTypeMatch[1] : line;
+
+        const eqIdx = target.indexOf("=");
+        if (eqIdx !== -1) {
+          patternStr = target.substring(0, eqIdx).trim();
+          typeStr = target.substring(eqIdx + 1).trim().toLowerCase();
+        }
+
+        if (patternStr && typeStr) {
+          try {
+            const regex = new RegExp(patternStr, "i");
+            rules.push({ regex, type: typeStr, patternStr });
+          } catch (e) {
+            console.warn("Invalid regex:", patternStr);
+          }
+        }
+      }
+      return rules;
+    }
+
+    function getTensorSize(nElements, quantType) {
+      const q = QUANT_SIZES[quantType];
+      if (!q) return nElements * 4;
+      return Math.floor((nElements * q.size) / q.block);
+    }
+
+    function is1DTensor(name, shape) {
+      if (shape.length <= 1) return true;
+      if (shape.length === 2 && (shape[0] === 1 || shape[1] === 1)) return true;
+      if (name.endsWith(".bias") || (name.endsWith(".weight") && (name.includes("_norm") || name.includes("norm.")))) {
+        if (shape.length <= 1 || (shape.length === 2 && Math.min(shape[0], shape[1]) === 1)) return true;
+      }
+      if (name.endsWith(".ssm_a") || name.endsWith(".ssm_dt.bias") || name.endsWith(".ssm_norm.weight") || name.endsWith(".ssm_conv1d.weight")) {
+        return true;
+      }
+      return false;
+    }
+
+    function onAutoNglToggle() {
+      const auto = document.getElementById("autoNglCheck").checked;
+      document.getElementById("nglInput").disabled = auto;
+      runSimulation();
+    }
+
+    function onNglManualChange() {
+      document.getElementById("autoNglCheck").checked = false;
+      runSimulation();
+    }
+
+    function setDeviceFilter(filter) {
+      currentDeviceFilter = filter;
+      document.getElementById("btnFilterAll").className = (filter === 'all') ? "active" : "";
+      document.getElementById("btnFilterRam").className = (filter === 'ram') ? "active" : "";
+      document.getElementById("btnFilterGpu").className = (filter === 'gpu') ? "active" : "";
+      renderTable();
+    }
+
+    function runSimulation() {
+      const t0 = performance.now();
+      const rulesText = document.getElementById("rulesInput").value;
+      const fallback = document.getElementById("fallbackType").value.toLowerCase();
+      const tokenEmbdCpu = document.getElementById("tokenEmbdCpuCheck").checked;
+      const autoNgl = document.getElementById("autoNglCheck").checked;
+
+      const ctxTokens = parseInt(document.getElementById("ctxInput").value, 10) || 8192;
+      const ubatchSize = parseInt(document.getElementById("ubatchInput").value, 10) || 512;
+      const kvQuant = document.getElementById("kvQuantType").value;
+
+      document.getElementById("ctxSizeDisplay").innerText = ctxTokens.toLocaleString("pt-BR");
+      document.getElementById("ubatchDisplay").innerText = ubatchSize;
+
+      const rules = parseRules(rulesText);
+
+      let totalBytes = 0;
+      let totalParams = 0;
+      const typeCounts = {};
+      const typeBytes = {};
+
+      // 1. Process all tensors with rules
+      const intermediateTensors = TENSORS_DATA.map((t, idx) => {
+        let matchedType = "";
+        let matchedRule = "Padrao (1D / Fallback)";
+
+        for (const rule of rules) {
+          if (rule.regex.test(t.name)) {
+            matchedType = rule.type;
+            matchedRule = rule.patternStr + "=" + rule.type;
+            break;
+          }
+        }
+
+        if (!matchedType) {
+          if (is1DTensor(t.name, t.shape)) {
+            matchedType = "f32";
+            matchedRule = "1D Tensor (F32 Nativo)";
+          } else {
+            matchedType = fallback;
+            matchedRule = "Fallback (" + fallback + ")";
+          }
+        }
+
+        if (matchedType === "q4_k_m") matchedType = "q4_k";
+        if (matchedType === "q5_k_m") matchedType = "q5_k";
+        if (matchedType === "q3_k_m") matchedType = "q3_k";
+
+        const sizeBytes = getTensorSize(t.n_elements, matchedType);
+        totalBytes += sizeBytes;
+        totalParams += t.n_elements;
+
+        typeCounts[matchedType] = (typeCounts[matchedType] || 0) + 1;
+        typeBytes[matchedType] = (typeBytes[matchedType] || 0) + sizeBytes;
+
+        let layerNum = null;
+        if (t.name.startsWith("blk.")) {
+          const p = t.name.split(".");
+          layerNum = parseInt(p[1], 10);
+        }
+
+        return {
+          idx: idx + 1,
+          name: t.name,
+          shape: t.shape,
+          n_elements: t.n_elements,
+          quantType: matchedType,
+          sizeBytes: sizeBytes,
+          sizeMb: (sizeBytes / (1024 * 1024)).toFixed(1),
+          rule: matchedRule,
+          layerNum: layerNum
+        };
+      });
+
+      const totalGb = totalBytes / (1024 * 1024 * 1024);
+      const totalMb = totalBytes / (1024 * 1024);
+      const bpw = (totalBytes * 8) / totalParams;
+
+      // 2. Calculate Context (-c) and UBatch (-ub) Memory
+      let bytesPerTokenKv = 34816; // Q8_0
+      if (kvQuant === "f16") bytesPerTokenKv = 65536;
+      else if (kvQuant === "q4_0") bytesPerTokenKv = 18432;
+
+      const kvCacheMb = (ctxTokens * bytesPerTokenKv) / (1024 * 1024);
+      const deltanetStateMb = 158.0; // 48 layers * (160 KB conv1d + 3.14 MB state)
+      const totalCtxMb = kvCacheMb + deltanetStateMb;
+
+      // UBatch Compute Buffer Memory
+      const ubatchMb = ubatchSize * 0.78 + 25.0;
+
+      // Base CUDA Driver & Context runtime
+      const cudaDriverMb = 400.0;
+
+      // Total Non-Weight VRAM
+      const totalNonWeightsMb = totalCtxMb + ubatchMb + cudaDriverMb;
+      const usableWeightsMb = Math.max(500, TOTAL_VRAM_MB - totalNonWeightsMb);
+      const usableWeightsBytes = usableWeightsMb * 1024 * 1024;
+
+      // 3. Layer Sizes and Offloading Calculation
+      const n_layer_all = 65; // blk.0 to blk.64
+      const layerSizes = new Array(n_layer_all).fill(0);
+      let outputLayerBytes = 0;
+      let tokenEmbdBytes = 0;
+
+      for (const t of intermediateTensors) {
+        if (t.layerNum !== null) {
+          layerSizes[t.layerNum] += t.sizeBytes;
+        } else if (t.name.startsWith("output")) {
+          outputLayerBytes += t.sizeBytes;
+        } else if (t.name.startsWith("token_embd")) {
+          tokenEmbdBytes += t.sizeBytes;
+        }
+      }
+
+      let n_gpu_layers = parseInt(document.getElementById("nglInput").value, 10);
+      if (isNaN(n_gpu_layers)) n_gpu_layers = 61;
+
+      // Auto NGL
+      if (autoNgl) {
+        let accumVram = outputLayerBytes;
+        if (!tokenEmbdCpu) accumVram += tokenEmbdBytes;
+        
+        let fittingLayers = 0;
+        for (let il = n_layer_all - 1; il >= 0; il--) {
+          if (accumVram + layerSizes[il] <= usableWeightsBytes) {
+            accumVram += layerSizes[il];
+            fittingLayers++;
+          } else {
+            break;
+          }
+        }
+        n_gpu_layers = fittingLayers + (outputLayerBytes > 0 ? 1 : 0);
+        document.getElementById("nglInput").value = n_gpu_layers;
+      }
+
+      const i_gpu_start = Math.max(0, n_layer_all + 1 - n_gpu_layers);
+
+      let ramBytes = 0;
+      let gpuBytes = 0;
+      let ramTensorsCount = 0;
+      let gpuTensorsCount = 0;
+
+      calculatedTensors = intermediateTensors.map(t => {
+        let isGpu = false;
+
+        if (t.name.startsWith("token_embd")) {
+          isGpu = !tokenEmbdCpu;
+        } else if (t.name.startsWith("output")) {
+          isGpu = (n_gpu_layers >= 1);
+        } else if (t.layerNum !== null) {
+          isGpu = (t.layerNum >= i_gpu_start);
+        }
+
+        if (isGpu) {
+          gpuBytes += t.sizeBytes;
+          gpuTensorsCount++;
+        } else {
+          ramBytes += t.sizeBytes;
+          ramTensorsCount++;
+        }
+
+        return {
+          ...t,
+          device: isGpu ? "GPU" : "RAM",
+          isGpu: isGpu
+        };
+      });
+
+      // 4. Update UI Metrics
+      document.getElementById("totalGb").innerText = totalGb.toFixed(2) + " GB";
+      document.getElementById("totalMb").innerText = totalMb.toFixed(0) + " MB";
+      document.getElementById("totalBpw").innerText = bpw.toFixed(2) + " bpw";
+
+      // VRAM Segment Percentages
+      const gpuWeightsMb = gpuBytes / (1024 * 1024);
+      const totalVramUsedMb = gpuWeightsMb + totalNonWeightsMb;
+      const freeVramMb = Math.max(0, TOTAL_VRAM_MB - totalVramUsedMb);
+
+      const pctWeights = Math.min(100, (gpuWeightsMb / TOTAL_VRAM_MB) * 100);
+      const pctCtx = Math.min(100, (totalCtxMb / TOTAL_VRAM_MB) * 100);
+      const pctUb = Math.min(100, (ubatchMb / TOTAL_VRAM_MB) * 100);
+      const pctCuda = Math.min(100, (cudaDriverMb / TOTAL_VRAM_MB) * 100);
+
+      document.getElementById("barWeights").style.width = pctWeights + "%";
+      document.getElementById("barCtx").style.width = pctCtx + "%";
+      document.getElementById("barUbatch").style.width = pctUb + "%";
+      document.getElementById("barCuda").style.width = pctCuda + "%";
+
+      document.getElementById("legWeightsVal").innerText = (gpuWeightsMb / 1024).toFixed(2) + " GB";
+      document.getElementById("legCtxVal").innerText = totalCtxMb.toFixed(0) + " MB";
+      document.getElementById("legUbVal").innerText = ubatchMb.toFixed(0) + " MB";
+      document.getElementById("legCudaVal").innerText = cudaDriverMb.toFixed(0) + " MB";
+      document.getElementById("legFreeVal").innerText = (freeVramMb / 1024).toFixed(2) + " GB";
+
+      const vramTotalText = document.getElementById("vramTotalText");
+      if (totalVramUsedMb > TOTAL_VRAM_MB) {
+        vramTotalText.innerHTML = `<span style="color: var(--danger); font-weight: 700;">ALERTA: ${(totalVramUsedMb/1024).toFixed(2)} / 10.0 GB!</span>`;
+      } else {
+        vramTotalText.innerText = `${(totalVramUsedMb/1024).toFixed(2)} GB / 10.0 GB (${((totalVramUsedMb/TOTAL_VRAM_MB)*100).toFixed(0)}%)`;
+      }
+
+      // Latency & TPS
+      let estTps = 0;
+      let estLatency = 0;
+      let estIq = 0;
+
+      if (bpw >= 8.0) estIq = 99.8;
+      else if (bpw >= 6.0) estIq = 99.2;
+      else if (bpw >= 5.0) estIq = 97.5;
+      else if (bpw >= 4.0) estIq = 96.5;
+      else if (bpw >= 3.3) estIq = 94.0;
+      else if (bpw >= 2.8) estIq = 87.5;
+      else if (bpw >= 2.4) estIq = 85.0;
+      else estIq = 78.0;
+
+      const actualRamGb = ramBytes / (1024 * 1024 * 1024);
+      const actualGpuGb = gpuBytes / (1024 * 1024 * 1024);
+
+      if (actualRamGb === 0) {
+        estLatency = (actualGpuGb / 760.0) * 1000 + 2.0;
+        estTps = 1000.0 / estLatency;
+      } else {
+        const ramLatency = (actualRamGb / 40.5) * 1000 * 1.15;
+        const gpuLatency = (actualGpuGb / 760.0) * 1000;
+        estLatency = ramLatency + gpuLatency + 4.0;
+        estTps = 1000.0 / estLatency;
+      }
+
+      document.getElementById("estTps").innerText = estTps.toFixed(1) + " t/s";
+      document.getElementById("estLatency").innerText = estLatency.toFixed(1) + " ms/tok";
+      document.getElementById("estIq").innerText = estIq.toFixed(1) + " pts";
+
+      // Device Allocation Text
+      const ramLayersCount = i_gpu_start;
+      const gpuLayersCount = n_layer_all - i_gpu_start;
+      const allocRamText = document.getElementById("allocRamText");
+      const allocGpuText = document.getElementById("allocGpuText");
+
+      if (actualRamGb === 0) {
+        allocRamText.innerHTML = `Nenhum tensor na RAM (0 MB)`;
+        allocGpuText.innerHTML = `Todas as 65 camadas + output (${actualGpuGb.toFixed(2)} GB)`;
+      } else {
+        const embdSuffix = tokenEmbdCpu ? ' + token_embd' : '';
+        const ramLayerDesc = ramLayersCount > 0 ? `<b>blk.0..${ramLayersCount - 1}</b> (${ramLayersCount} camadas)${embdSuffix}` : `Apenas token_embd`;
+        const gpuLayerDesc = gpuLayersCount > 0 ? `<b>blk.${i_gpu_start}..64</b> (${gpuLayersCount} camadas) + output` : `Nenhuma camada`;
+
+        allocRamText.innerHTML = `${ramLayerDesc} &rarr; <b>${actualRamGb.toFixed(2)} GB</b> (${ramTensorsCount} tensores)`;
+        allocGpuText.innerHTML = `${gpuLayerDesc} &rarr; <b>${actualGpuGb.toFixed(2)} GB</b> (${gpuTensorsCount} tensores)`;
+      }
+
+      // CLI Command Preview
+      const embdOpt = tokenEmbdCpu ? '-ot "token_embd=CPU"' : '';
+      const cliCommand = `./llama-server -m Qwen3.8-27B-Custom.gguf -ngl ${n_gpu_layers} -c ${ctxTokens} -ub ${ubatchSize} -ctk ${kvQuant} -ctv ${kvQuant} ${embdOpt} --threads 6 --mlock`;
+      document.getElementById("cliCommandText").innerText = cliCommand;
+
+      // Filter tabs counts
+      document.getElementById("countRamTab").innerText = ramTensorsCount;
+      document.getElementById("countGpuTab").innerText = gpuTensorsCount;
+
+      // Mobile Sticky Bar values
+      const stickyVramVal = document.getElementById("stickyVramVal");
+      if (stickyVramVal) {
+        stickyVramVal.innerText = `${(totalVramUsedMb/1024).toFixed(1)} / 10 GB`;
+      }
+      const stickyTpsVal = document.getElementById("stickyTpsVal");
+      if (stickyTpsVal) {
+        stickyTpsVal.innerText = `${estTps.toFixed(1)} t/s`;
+      }
+      const stickyLayersVal = document.getElementById("stickyLayersVal");
+      if (stickyLayersVal) {
+        stickyLayersVal.innerText = `${n_gpu_layers} GPU • ${ramLayersCount} RAM`;
+      }
+
+      // Types Breakdown Chips
+      const breakdownEl = document.getElementById("typesBreakdown");
+      breakdownEl.innerHTML = Object.entries(typeCounts)
+        .sort((a, b) => b[1] - a[1])
+        .map(([qtype, cnt]) => {
+          const mb = (typeBytes[qtype] / (1024 * 1024)).toFixed(0);
+          return `<div class="type-chip"><span class="quant-badge q-${qtype}">${qtype.toUpperCase()}</span><span class="count">${cnt}x</span><span style="color: var(--text-muted); font-size: 0.68rem;">${mb}MB</span></div>`;
+        })
+        .join("");
+
+      renderTable();
+      const t1 = performance.now();
+      document.getElementById("calcTime").innerText = `${(t1 - t0).toFixed(0)} ms`;
+    }
+
+    function renderTable() {
+      const filter = document.getElementById("searchFilter").value.toLowerCase();
+      const tbody = document.getElementById("tensorTableBody");
+      let visibleCount = 0;
+
+      const rows = [];
+      for (const t of calculatedTensors) {
+        if (currentDeviceFilter === "ram" && t.isGpu) continue;
+        if (currentDeviceFilter === "gpu" && !t.isGpu) continue;
+
+        if (filter && !t.name.toLowerCase().includes(filter) && !t.quantType.toLowerCase().includes(filter)) {
+          continue;
+        }
+
+        visibleCount++;
+        if (visibleCount <= 250) {
+          const devBadge = t.isGpu 
+            ? `<span class="dev-badge dev-gpu">GPU</span>`
+            : `<span class="dev-badge dev-cpu">RAM</span>`;
+
+          rows.push(`<tr>
+            <td style="color: var(--text-muted);">${t.idx}</td>
+            <td class="col-tensor-name">
+              <strong style="color: var(--text-bright);">${t.name}</strong>
+              <div style="font-size: 0.65rem; color: var(--text-muted);" class="mobile-subinfo">${(t.n_elements / 1e6).toFixed(1)}M • ${t.rule}</div>
+            </td>
+            <td>${devBadge}</td>
+            <td class="col-hide-mobile" style="color: var(--text-muted);">${JSON.stringify(t.shape)}</td>
+            <td class="col-hide-mobile">${(t.n_elements / 1e6).toFixed(1)}M</td>
+            <td><span class="quant-badge q-${t.quantType}">${t.quantType.toUpperCase()}</span></td>
+            <td><strong>${t.sizeMb}</strong> <span style="font-size: 0.65rem; color: var(--text-muted);">MB</span></td>
+            <td class="col-hide-mobile" style="color: var(--text-muted); font-size: 0.72rem;">${t.rule}</td>
+          </tr>`);
+        }
+      }
+
+      if (visibleCount > 250) {
+        rows.push(`<tr><td colspan="8" style="text-align: center; color: var(--warning); padding: 10px;">Mostrando primeiros 250 de ${visibleCount} tensores filtrados. Refine a busca ou use os filtros RAM/GPU.</td></tr>`);
+      }
+
+      tbody.innerHTML = rows.join("");
+      document.getElementById("filterCount").innerText = `${visibleCount} / 866 tensores`;
+    }
+
+    function loadPreset(name, btn) {
+      if (PRESETS[name]) {
+        document.getElementById("rulesInput").value = PRESETS[name];
+        if (name === "ud_iq4_xs") document.getElementById("fallbackType").value = "iq4_xs";
+        else if (name === "ud_iq3_s") document.getElementById("fallbackType").value = "iq3_s";
+        else if (name === "pure_q4_k_m") document.getElementById("fallbackType").value = "q4_k";
+        else document.getElementById("fallbackType").value = "q2_k";
+        
+        document.getElementById("autoNglCheck").checked = true;
+        document.getElementById("nglInput").disabled = true;
+
+        document.querySelectorAll('.presets-container button').forEach(b => b.classList.remove('active'));
+        const targetBtn = btn || document.getElementById('btn_' + name);
+        if (targetBtn) targetBtn.classList.add('active');
+
+        const labels = {
+          ud_q2_k_xl: "UD-Q2_K_XL carregado!",
+          ud_iq4_xs: "UD-IQ4_XS carregado!",
+          ud_iq3_s: "UD-IQ3_S carregado!",
+          pure_q4_k_m: "Puro Q4_K_M carregado!",
+          pure_q2_k: "Puro Q2_K carregado!"
+        };
+        showToast(labels[name] || "Preset carregado!");
+        runSimulation();
+      }
+    }
+
+    function copyCliCommand() {
+      const cmd = document.getElementById("cliCommandText").innerText;
+      navigator.clipboard.writeText(cmd).then(() => {
+        showToast("Comando copiado!");
+      });
+    }
+
+    function copyTensorTypesFile() {
+      const text = calculatedTensors.map(t => `${t.name}=${t.quantType}`).join("\n");
+      navigator.clipboard.writeText(text).then(() => {
+        showToast("Lista copiada (866 tensores)!");
+      }).catch(err => {
+        console.error("Erro ao copiar:", err);
+      });
+    }
+
+    function downloadTensorTypesFile() {
+      const text = calculatedTensors.map(t => `${t.name}=${t.quantType}`).join("\n");
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "tensor_types_qwen3.8_27b_custom.txt";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      loadPreset("ud_q2_k_xl");
+    });
+  </script>
+</body>
+</html>

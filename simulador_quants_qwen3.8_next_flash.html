@@ -1,0 +1,2054 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+  <meta name="theme-color" content="#0d1117">
+  <title>Simulador de Quantizacao e Memoria: Qwen 3.8 Next Flash</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card-bg: #161b22;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --text-muted: #8b949e;
+      --text-bright: #f0f6fc;
+      --accent: #58a6ff;
+      --accent-hover: #79c0ff;
+      --success: #3fb950;
+      --warning: #d29922;
+      --danger: #f85149;
+      --purple: #bc8cff;
+      --orange: #f0883e;
+      --cyan: #388bfd;
+      --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    /* Universal zero-overflow reset */
+    html {
+      box-sizing: border-box;
+      width: 100%;
+      max-width: 100%;
+      overflow-x: hidden;
+    }
+
+    *, *::before, *::after {
+      box-sizing: inherit;
+      margin: 0;
+      padding: 0;
+      min-width: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      line-height: 1.5;
+      padding: 16px 12px 75px 12px;
+      width: 100%;
+      max-width: 100%;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1480px;
+      margin: 0 auto;
+      min-width: 0;
+    }
+
+    header {
+      margin-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 10px;
+      width: 100%;
+    }
+
+    header h1 {
+      color: var(--text-bright);
+      font-size: 1.45rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      word-break: break-word;
+    }
+
+    .badges-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      font-size: 0.72rem;
+      padding: 2px 7px;
+      border-radius: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      background: rgba(88, 166, 255, 0.15);
+      color: var(--accent);
+      border: 1px solid rgba(88, 166, 255, 0.3);
+      white-space: nowrap;
+    }
+
+    .badge-gpu {
+      background: rgba(63, 185, 80, 0.15);
+      color: var(--success);
+      border-color: rgba(63, 185, 80, 0.4);
+    }
+
+    .badge-ram {
+      background: rgba(240, 136, 62, 0.15);
+      color: var(--orange);
+      border-color: rgba(240, 136, 62, 0.4);
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 0.86rem;
+      margin-top: 4px;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 14px;
+      width: 100%;
+      min-width: 0;
+    }
+
+    @media (max-width: 1100px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      width: 100%;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .card-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text-bright);
+      margin-bottom: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .presets-container {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+      align-items: center;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .presets-label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    button {
+      background: #21262d;
+      color: var(--text-bright);
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 500;
+      transition: all 0.15s ease;
+      touch-action: manipulation;
+    }
+
+    button:hover {
+      background: #30363d;
+      border-color: #8b949e;
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    button.primary {
+      background: #238636;
+      border-color: #2ea043;
+      color: #fff;
+    }
+    button.primary:hover {
+      background: #2ea043;
+    }
+
+    button.active {
+      background: var(--accent) !important;
+      color: #0d1117 !important;
+      font-weight: 700 !important;
+      border-color: var(--accent-hover) !important;
+      box-shadow: 0 0 10px rgba(88, 166, 255, 0.4);
+    }
+
+    button.mini {
+      padding: 3px 8px;
+      font-size: 0.75rem;
+    }
+
+    .btn-title {
+      font-weight: 700;
+      display: block;
+    }
+
+    .btn-sub {
+      font-size: 0.65rem;
+      opacity: 0.75;
+      display: block;
+    }
+
+    .toast-msg {
+      font-size: 0.72rem;
+      color: var(--accent);
+      font-weight: 600;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+      background: rgba(88, 166, 255, 0.1);
+      padding: 3px 8px;
+      border-radius: 4px;
+      border: 1px solid rgba(88, 166, 255, 0.3);
+      white-space: nowrap;
+    }
+
+    .toast-msg.show {
+      opacity: 1;
+    }
+
+    textarea {
+      width: 100%;
+      height: 140px;
+      background: #0d1117;
+      color: #79c0ff;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      resize: vertical;
+      line-height: 1.4;
+      white-space: pre;
+      max-width: 100%;
+    }
+
+    textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.2);
+    }
+
+    /* Controls Panel */
+    .controls-panel {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 10px;
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+      margin-top: 10px;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .param-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .param-group label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    select, input[type="text"], input[type="number"], input[type="range"] {
+      background: #161b22;
+      color: var(--text-bright);
+      border: 1px solid var(--border);
+      padding: 6px 8px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-family: var(--font-mono);
+      min-height: 36px;
+      width: 100%;
+      max-width: 100%;
+    }
+
+    input[type="range"] {
+      padding: 0;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    select:focus, input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .ctx-quick-btns {
+      display: flex;
+      gap: 3px;
+      margin-top: 2px;
+      width: 100%;
+    }
+
+    .ctx-quick-btns button {
+      flex: 1;
+      padding: 3px 2px;
+      font-size: 0.72rem;
+      min-height: 28px;
+      text-align: center;
+    }
+
+    /* Options Row */
+    .options-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-top: 10px;
+      flex-wrap: wrap;
+      width: 100%;
+    }
+
+    .touch-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #0d1117;
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      font-size: 0.78rem;
+      cursor: pointer;
+      user-select: none;
+      touch-action: manipulation;
+    }
+
+    .touch-toggle input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      accent-color: var(--accent);
+    }
+
+    /* Warnings Banner */
+    .warn-banner {
+      display: none;
+      background: rgba(248, 81, 73, 0.15);
+      border: 1px solid rgba(248, 81, 73, 0.4);
+      color: #ff7b72;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 0.78rem;
+      margin-top: 10px;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+
+    .warn-banner.show {
+      display: block;
+    }
+
+    .warn-banner strong {
+      color: #ff938a;
+    }
+
+    /* Metrics Grid */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      width: 100%;
+    }
+
+    .metric-box {
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 6px;
+      text-align: center;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .metric-label {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 2px;
+    }
+
+    .metric-val {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text-bright);
+      font-family: var(--font-mono);
+      word-break: break-word;
+    }
+
+    .metric-sub {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* Dual Memory Meters: VRAM & RAM */
+    .meter-section {
+      margin-top: 10px;
+      padding: 10px;
+      border-radius: 6px;
+      background: #0d1117;
+      border: 1px solid var(--border);
+      width: 100%;
+    }
+
+    .meter-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      flex-wrap: wrap;
+      gap: 4px;
+      width: 100%;
+    }
+
+    .multi-bar {
+      height: 20px;
+      background: #21262d;
+      border-radius: 6px;
+      overflow: hidden;
+      display: flex;
+      border: 1px solid #30363d;
+      position: relative;
+      width: 100%;
+    }
+
+    .bar-seg {
+      height: 100%;
+      transition: width 0.3s ease;
+    }
+
+    /* VRAM Colors */
+    .seg-dense { background: #238636; }
+    .seg-hot-exp { background: #1f6feb; }
+    .seg-ctx { background: #8957e5; }
+    .seg-ubatch { background: #d29922; }
+    .seg-cuda { background: #388bfd; }
+
+    /* RAM Colors */
+    .seg-cold-exp { background: #f0883e; }
+    .seg-token-embd { background: #bc8cff; }
+    .seg-token-embd-cpu { background: #3fb950; }
+    .seg-ram-os { background: #6e7681; }
+
+    .meter-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+      font-size: 0.74rem;
+      align-items: center;
+      width: 100%;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    .legend-free-item {
+      margin-left: auto;
+    }
+
+    .alloc-box {
+      margin-top: 10px;
+      padding: 8px 10px;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      font-size: 0.76rem;
+      width: 100%;
+      line-height: 1.4;
+    }
+
+    .alloc-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+      gap: 6px;
+      word-break: break-word;
+    }
+
+    .alloc-row:last-child { margin-bottom: 0; }
+
+    /* CLI Preview Box */
+    .cli-box {
+      margin-top: 10px;
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      color: #79c0ff;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .cli-text {
+      overflow-x: auto;
+      white-space: nowrap;
+      flex: 1;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 2px;
+      min-width: 0;
+    }
+
+    /* Types breakdown chips */
+    .types-summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 8px;
+      width: 100%;
+    }
+
+    .type-chip {
+      font-size: 0.72rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #21262d;
+      border: 1px solid var(--border);
+      font-family: var(--font-mono);
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .type-chip span.count {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* Table Container */
+    
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    th.sortable:hover {
+      background: rgba(88, 166, 255, 0.15);
+      color: var(--accent);
+    }
+
+    .sort-icon {
+      font-size: 0.68rem;
+      margin-left: 2px;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .badge-layer {
+      display: inline-block;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 0.72rem;
+      background: rgba(188, 140, 255, 0.15);
+      color: var(--purple);
+      border: 1px solid rgba(188, 140, 255, 0.35);
+      white-space: nowrap;
+    }
+
+    .badge-global {
+      display: inline-block;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 0.68rem;
+      background: rgba(139, 148, 158, 0.15);
+      color: var(--text-muted);
+      border: 1px solid rgba(139, 148, 158, 0.3);
+      white-space: nowrap;
+    }
+
+    .filter-select {
+      background: #0d1117;
+      color: var(--text-bright);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 8px;
+      font-size: 0.76rem;
+      font-family: var(--font-mono);
+      min-height: 34px;
+    }
+
+    .table-container {
+      max-height: 520px;
+      overflow-y: auto;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-top: 10px;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+      font-family: var(--font-mono);
+      min-width: 100%;
+    }
+
+    thead {
+      background: #161b22;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      box-shadow: 0 1px 0 var(--border);
+    }
+
+    th, td {
+      padding: 6px 8px;
+      text-align: left;
+      border-bottom: 1px solid #21262d;
+    }
+
+    th {
+      color: var(--text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.7rem;
+    }
+
+    tr:hover {
+      background: rgba(88, 166, 255, 0.05);
+    }
+
+    .quant-badge {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 0.72rem;
+      white-space: nowrap;
+    }
+
+    .dev-badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 0.68rem;
+      letter-spacing: 0.3px;
+      white-space: nowrap;
+    }
+
+    .dev-gpu {
+      background: rgba(63, 185, 80, 0.15);
+      color: var(--success);
+      border: 1px solid rgba(63, 185, 80, 0.4);
+    }
+
+    .dev-hot-moe {
+      background: rgba(31, 111, 235, 0.15);
+      color: var(--accent);
+      border: 1px solid rgba(31, 111, 235, 0.4);
+    }
+
+    .dev-cold-moe {
+      background: rgba(240, 136, 62, 0.15);
+      color: var(--orange);
+      border: 1px solid rgba(240, 136, 62, 0.4);
+    }
+
+    .dev-lazy {
+      background: rgba(188, 140, 255, 0.15);
+      color: var(--purple);
+      border: 1px solid rgba(188, 140, 255, 0.4);
+    }
+
+    .dev-incompat {
+      background: rgba(248, 81, 73, 0.2);
+      color: var(--danger);
+      border: 1px solid rgba(248, 81, 73, 0.5);
+    }
+
+    .q-f32 { background: #388bfd33; color: #58a6ff; }
+    .q-q8_0 { background: #23863633; color: #3fb950; }
+    .q-q6_k { background: #1f6feb33; color: #58a6ff; }
+    .q-q5_k, .q-q5_1, .q-q5_0 { background: #a371f733; color: #bc8cff; }
+    .q-q4_k, .q-q4_0, .q-iq4_xs, .q-iq4_nl { background: #d2992233; color: #d29922; }
+    .q-q3_k, .q-iq3_s, .q-iq3_xxs { background: #db6d2833; color: #f0883e; }
+    .q-q2_k, .q-iq2_s, .q-iq2_xs, .q-iq2_xxs { background: #f8514933; color: #f85149; }
+    .q-iq1_s, .q-iq1_m { background: #da363344; color: #ff7b72; }
+
+    .search-bar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-top: 10px;
+      flex-wrap: wrap;
+      width: 100%;
+    }
+
+    .search-input {
+      flex: 1;
+      min-width: 180px;
+      padding: 6px 10px;
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-bright);
+      font-size: 0.85rem;
+    }
+
+    .filter-tabs {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+
+    /* Mobile Sticky Bar */
+    .mobile-sticky-bar {
+      display: none;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(22, 27, 34, 0.95);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border-top: 1px solid var(--border);
+      padding: 8px 12px;
+      z-index: 100;
+      box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.4);
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.8rem;
+      width: 100%;
+    }
+
+    .mobile-sticky-info {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    /* Mobile queries */
+    @media (max-width: 768px) {
+      body {
+        padding: 10px 8px 75px 8px;
+        overflow-x: hidden;
+      }
+
+      header h1 {
+        font-size: 1.2rem;
+        gap: 6px;
+      }
+
+      .badge {
+        font-size: 0.65rem;
+        padding: 1px 6px;
+      }
+
+      .subtitle {
+        font-size: 0.78rem;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+
+      .card {
+        padding: 10px 8px;
+      }
+
+      .card-title {
+        font-size: 0.9rem;
+      }
+
+      .presets-container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+      }
+
+      .presets-label {
+        grid-column: 1 / -1;
+      }
+
+      .presets-container button {
+        padding: 6px 4px;
+        min-height: 42px;
+        font-size: 0.74rem;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+
+      #btn_ultra_compact {
+        grid-column: 1 / -1;
+      }
+
+      .toast-msg {
+        grid-column: 1 / -1;
+        text-align: center;
+      }
+
+      textarea {
+        height: 120px;
+        font-size: 14px;
+      }
+
+      .controls-panel {
+        grid-template-columns: 1fr;
+        gap: 8px;
+        padding: 8px;
+      }
+
+      select, input[type="text"], input[type="number"] {
+        font-size: 14px;
+        min-height: 38px;
+      }
+
+      .options-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .touch-toggle {
+        justify-content: center;
+        min-height: 38px;
+        font-size: 0.8rem;
+      }
+
+      .btn-recalculate {
+        width: 100%;
+        min-height: 44px;
+        font-size: 0.95rem;
+        font-weight: 700;
+      }
+
+      .metrics-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+      }
+
+      .meter-legend {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+        font-size: 0.7rem;
+      }
+
+      .legend-free-item {
+        grid-column: 1 / -1;
+        margin-left: 0 !important;
+        padding-top: 4px;
+        border-top: 1px solid #21262d;
+      }
+
+      .alloc-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+        margin-bottom: 6px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid #21262d;
+      }
+
+      .cli-box {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .cli-box button {
+        width: 100%;
+        min-height: 38px;
+      }
+
+      .search-bar {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .filter-tabs {
+        width: 100%;
+      }
+
+      .filter-tabs button {
+        flex: 1;
+        text-align: center;
+        padding: 8px 4px;
+        min-height: 36px;
+        font-size: 0.72rem;
+      }
+
+      .col-hide-mobile {
+        display: none !important;
+      }
+
+      .col-tensor-name {
+        max-width: 140px;
+        word-break: break-all;
+        overflow-wrap: anywhere;
+        font-size: 0.72rem;
+      }
+
+      th, td {
+        padding: 6px 4px;
+        font-size: 0.72rem;
+      }
+
+      .mobile-sticky-bar {
+        display: flex;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container" id="topContainer">
+    <header>
+      <h1>
+        Simulador Qwen 3.8 Next Flash
+        <div class="badges-row">
+          <span class="badge">MoE 512x56B</span>
+          <span class="badge">1.224 Tensores</span>
+          <span class="badge badge-gpu">RTX 3080 10GB</span>
+          <span class="badge badge-ram">64GB RAM DDR4</span>
+        </div>
+      </h1>
+      <p class="subtitle">
+        Simulador de quantizacao, alocacao hibrida GPU/RAM, orcamento de experts quentes (<code>--vram-expert-budget-mb</code>) e early exit para o Qwen 3.8 Next Flash.
+      </p>
+    </header>
+
+    <div class="grid">
+      <!-- Input Card -->
+      <div class="card">
+        <div class="card-title">
+          <span>1. Regras de Quantizacao (Regex / CLI)</span>
+        </div>
+
+        <div class="presets-container">
+          <span class="presets-label">Presets:</span>
+          <button id="btn_ttjv_current" onclick="loadPreset('ttjv_current', this)">
+            <span class="btn-title">TTJV Atual (UD-IQ4)</span>
+            <span class="btn-sub">Sweep ~58G RAM</span>
+          </button>
+
+          <button id="btn_ttjv_q3" onclick="loadPreset('ttjv_q3', this)">
+            <span class="btn-title">TTJV Q3_K_M + IQ4</span>
+            <span class="btn-sub">PPL &lt; 3.3 (Rec.)</span>
+          </button>
+          <button id="btn_ttjv_q2" onclick="loadPreset('ttjv_q2', this)">
+            <span class="btn-title">TTJV Q2_K Rapido</span>
+            <span class="btn-sub">Alta Velocidade</span>
+          </button>
+          <button id="btn_ttjv_iq4_gate" onclick="loadPreset('ttjv_iq4_gate', this)">
+            <span class="btn-title">TTJV IQ4 Gate</span>
+            <span class="btn-sub">Maxima Qualidade</span>
+          </button>
+          <button id="btn_pure_iq4_nl" onclick="loadPreset('pure_iq4_nl', this)">
+            <span class="btn-title">Puro IQ4_NL MoE</span>
+            <span class="btn-sub">Excede RAM 60G</span>
+          </button>
+          <button id="btn_ultra_compact" onclick="loadPreset('ultra_compact', this)">
+            <span class="btn-title">Ultra Compacto</span>
+            <span class="btn-sub">IQ2_XXS Economico</span>
+          </button>
+          <span id="toastMsg" class="toast-msg">Preset carregado!</span>
+        </div>
+
+        <textarea id="rulesInput" spellcheck="false" placeholder="Cole aqui seus argumentos --tensor-type ou regras..." oninput="onRulesInput()"></textarea>
+
+        <!-- Warning Callout Banner for Block-256 Incompatibility -->
+        <div id="downTensorWarning" class="warn-banner">
+          <strong>ALERTA DE GEOMETRIA (ffn_down_exps):</strong><br>
+          Tensores <code>ffn_down_exps</code> possuem dimensao <code>[640, 2560, 512, 1]</code>. Como 640 nao e divisivel por 256, qualquer quant com bloco de 256 (K-quants como Q2_K, Q3_K, Q4_K, Q5_K, Q6_K e IQ2/IQ3) falhara ou sofrera fallback! Use <b>IQ4_NL, Q4_0 ou Q8_0</b>.
+        </div>
+
+        <!-- Parameters Panel (-c, -ub, fallback, budget, early exit, etc.) -->
+        <div class="controls-panel">
+          <div class="param-group">
+            <label for="ctxInput">
+              Contexto (-c):
+              <span id="ctxSizeDisplay" style="color: var(--purple);">8.192</span>
+            </label>
+            <input type="number" id="ctxInput" value="8192" step="1024" min="1024" max="262144" onchange="runSimulation()">
+            <div class="ctx-quick-btns">
+              <button class="mini" onclick="setCtx(4096)">4k</button>
+              <button class="mini" onclick="setCtx(8192)">8k</button>
+              <button class="mini" onclick="setCtx(16384)">16k</button>
+              <button class="mini" onclick="setCtx(32768)">32k</button>
+              <button class="mini" onclick="setCtx(65536)">64k</button>
+            </div>
+          </div>
+
+          <div class="param-group">
+            <label for="ubatchInput">
+              Micro-Batch (-ub):
+              <span id="ubatchDisplay" style="color: var(--orange);">512</span>
+            </label>
+            <select id="ubatchInput" onchange="runSimulation()">
+              <option value="256">256 (Menor VRAM)</option>
+              <option value="512" selected>512 (Padrao Rec.)</option>
+              <option value="1024">1024 (Prompt Rapido)</option>
+              <option value="2048">2048 (Servidor)</option>
+            </select>
+          </div>
+
+          <div class="param-group">
+            <label for="kvQuantType">Quant KV (-ctk/-ctv):</label>
+            <select id="kvQuantType" onchange="runSimulation()">
+              <option value="q8_0" selected>Q8_0 (~13 KB/t - Rec.)</option>
+              <option value="f16">F16 (~24 KB/t)</option>
+              <option value="q4_0">Q4_0 (~6.9 KB/t)</option>
+            </select>
+          </div>
+
+          <div class="param-group">
+            <label for="vramBudgetInput">
+              Budget VRAM Experts:
+              <span id="vramBudgetDisplay" style="color: var(--accent);">4.100 MB</span>
+            </label>
+            <input type="range" id="vramBudgetInput" min="0" max="5500" step="100" value="4100" oninput="onBudgetChange(this.value)">
+            <div style="display: flex; justify-content: space-between; font-size: 0.65rem; color: var(--text-muted);">
+              <span>0 MB (All RAM)</span>
+              <span style="color: var(--warning);">4.100 (Ideal)</span>
+              <span style="color: var(--danger);">&gt;4.300 (OOM)</span>
+            </div>
+          </div>
+
+          <div class="param-group">
+            <label for="earlyExitInput">
+              Early Exit (Camadas):
+              <span id="earlyExitDisplay" style="color: var(--success);">48 / 48 (Full)</span>
+            </label>
+            <input type="range" id="earlyExitInput" min="36" max="48" step="1" value="48" oninput="onEarlyExitChange(this.value)">
+            <div style="display: flex; justify-content: space-between; font-size: 0.65rem; color: var(--text-muted);">
+              <span>36 (+35% vel)</span>
+              <span>42 (PPL ~3.5)</span>
+              <span>48 (PPL &lt; 3.3)</span>
+            </div>
+          </div>
+
+          <div class="param-group">
+            <label for="ramOsInput">
+              Reserva SO / Swap:
+              <span id="ramOsDisplay" style="color: var(--text-bright);">512 MB</span>
+            </label>
+            <select id="ramOsInput" onchange="runSimulation()">
+              <option value="512" selected>512 MB (Com Swap / Rec.)</option>
+              <option value="1024">1.024 MB (1.0 GB)</option>
+              <option value="2048">2.048 MB (2.0 GB)</option>
+              <option value="2560">2.560 MB (2.5 GB - Conservador)</option>
+            </select>
+          </div>
+
+          <div class="param-group">
+            <label for="fallbackType">Fallback Quant:</label>
+            <select id="fallbackType" onchange="runSimulation()">
+              <option value="q4_k" selected>Q4_K_M (Padrao)</option>
+              <option value="q3_k">Q3_K_M</option>
+              <option value="q2_k">Q2_K</option>
+              <option value="iq4_nl">IQ4_NL</option>
+              <option value="q4_0">Q4_0</option>
+              <option value="q8_0">Q8_0</option>
+              <option value="q6_k">Q6_K</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="options-row">
+          <label class="touch-toggle">
+            <input type="checkbox" id="tokenEmbdCpuCheck" checked onchange="runSimulation()">
+            <span>-ot token_embd=CPU</span>
+          </label>
+
+          <label class="touch-toggle">
+            <input type="checkbox" id="lazyTokenEmbdCheck" checked onchange="runSimulation()">
+            <span>per_layer_token_embd Lazy mmap (~2.5 GB RAM)</span>
+          </label>
+
+          <label class="touch-toggle">
+            <input type="checkbox" id="nglOffloadDenseCheck" checked onchange="runSimulation()">
+            <span>-ngl 999 (Dense 100% GPU)</span>
+          </label>
+
+          <button class="primary btn-recalculate" onclick="runSimulation()">Recalcular</button>
+        </div>
+      </div>
+
+      <!-- Results Card -->
+      <div class="card" id="metricsCard">
+        <div class="card-title">
+          <span>2. Metricas & Orcamento Dual (VRAM + RAM)</span>
+          <span id="calcTime" style="font-size: 0.72rem; color: var(--text-muted); font-weight: normal;"></span>
+        </div>
+
+        <div class="metrics-grid">
+          <div class="metric-box">
+            <div class="metric-label">Tamanho do Modelo</div>
+            <div class="metric-val" id="totalGb">-- GB</div>
+            <div class="metric-sub" id="totalMb">-- MB</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">Bits por Peso</div>
+            <div class="metric-val" id="totalBpw" style="color: var(--accent);">-- bpw</div>
+            <div class="metric-sub">176.94B Parametros</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">Throughput Est.</div>
+            <div class="metric-val" id="estTps" style="color: var(--success);">-- t/s</div>
+            <div class="metric-sub" id="estLatency">-- ms / tok</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">Qualidade / PPL Est.</div>
+            <div class="metric-val" id="estPpl" style="color: var(--purple);">--</div>
+            <div class="metric-sub" id="estPplSub">Meta: &lt; 3.30 PPL</div>
+          </div>
+        </div>
+
+        <!-- VRAM Meter: RTX 3080 10GB -->
+        <div class="meter-section">
+          <div class="meter-header">
+            <span>Uso VRAM GDDR6X (RTX 3080: 10.240 MB)</span>
+            <span id="vramTotalText" style="font-family: var(--font-mono);">-- / 10.240 MB</span>
+          </div>
+
+          <div class="multi-bar">
+            <div id="barDense" class="bar-seg seg-dense" title="Dense Offloaded (-ngl 999)" style="width: 0%;"></div>
+            <div id="barHotExp" class="bar-seg seg-hot-exp" title="Hot MoE Budget (--vram-expert-budget-mb)" style="width: 0%;"></div>
+            <div id="barCtx" class="bar-seg seg-ctx" title="KV Cache + SSM State" style="width: 0%;"></div>
+            <div id="barUbatch" class="bar-seg seg-ubatch" title="Ativacoes Microbatch" style="width: 0%;"></div>
+            <div id="barCuda" class="bar-seg seg-cuda" title="CUDA & Driver" style="width: 0%;"></div>
+          </div>
+
+          <div class="meter-legend">
+            <div class="legend-item"><div class="legend-dot seg-dense"></div> Dense: <span id="legDenseVal" style="color: var(--text-bright); font-weight: 600;">0 MB</span></div>
+            <div class="legend-item"><div class="legend-dot seg-hot-exp"></div> Hot Experts: <span id="legHotExpVal" style="color: var(--accent); font-weight: 600;">0 MB</span></div>
+            <div class="legend-item"><div class="legend-dot seg-ctx"></div> Contexto: <span id="legCtxVal" style="color: var(--purple); font-weight: 600;">0 MB</span></div>
+            <div class="legend-item"><div class="legend-dot seg-ubatch"></div> Ativacoes: <span id="legUbVal" style="color: var(--warning); font-weight: 600;">0 MB</span></div>
+            <div class="legend-item"><div class="legend-dot seg-cuda"></div> CUDA: <span id="legCudaVal" style="color: var(--cyan); font-weight: 600;">400 MB</span></div>
+            <div class="legend-item legend-free-item">Livre: <b id="legFreeVramVal" style="color: var(--text-bright);">-- MB</b></div>
+          </div>
+        </div>
+
+        <!-- RAM Meter: 60.7 GB Usable DDR4 -->
+        <div class="meter-section" style="margin-top: 8px;">
+          <div class="meter-header">
+            <span>Uso RAM DDR4 (Ryzen 3600: 60.7 GB Utilizavel / 64 GB)</span>
+            <span id="ramTotalText" style="font-family: var(--font-mono);">-- / 60.7 GB</span>
+          </div>
+
+          <div class="multi-bar">
+            <div id="barColdExp" class="bar-seg seg-cold-exp" title="Cold MoE Experts (na RAM)" style="width: 0%;"></div>
+            <div id="barTokenEmbd" class="bar-seg seg-token-embd" title="Per-Layer Embd Working Set" style="width: 0%;"></div>
+            <div id="barTokenEmbdCpu" class="bar-seg seg-token-embd-cpu" title="token_embd.weight (-ot token_embd=CPU)" style="width: 0%;"></div>
+            <div id="barRamOs" class="bar-seg seg-ram-os" title="OS & Buffers CPU" style="width: 0%;"></div>
+          </div>
+
+          <div class="meter-legend">
+            <div class="legend-item"><div class="legend-dot seg-cold-exp"></div> Cold Experts: <span id="legColdExpVal" style="color: var(--orange); font-weight: 600;">0 GB</span></div>
+            <div class="legend-item"><div class="legend-dot seg-token-embd"></div> Per-Layer Embd: <span id="legEmbdVal" style="color: var(--purple); font-weight: 600;">0 GB</span></div>
+            <div class="legend-item" id="legTokenEmbdCpuItem"><div class="legend-dot seg-token-embd-cpu"></div> token_embd (CPU): <span id="legTokenEmbdCpuVal" style="color: var(--success); font-weight: 600;">0 MB</span></div>
+            <div class="legend-item"><div class="legend-dot seg-ram-os"></div> SO/Swap: <span id="legRamOsVal" style="color: var(--text-muted); font-weight: 600;">512 MB</span></div>
+            <div class="legend-item legend-free-item">Livre: <b id="legFreeRamVal" style="color: var(--text-bright);">-- GB</b></div>
+          </div>
+        </div>
+
+        <!-- Allocation Summary Box -->
+        <div class="alloc-box" id="allocDetailBox">
+          <div class="alloc-row">
+            <span style="color: var(--success); font-weight: 600;">VRAM GDDR6X:</span>
+            <span id="allocGpuText" style="font-family: var(--font-mono);">--</span>
+          </div>
+          <div class="alloc-row">
+            <span style="color: var(--orange); font-weight: 600;">RAM DDR4:</span>
+            <span id="allocRamText" style="font-family: var(--font-mono);">--</span>
+          </div>
+        </div>
+
+        <!-- Ready-to-copy CLI Commands -->
+        <div class="cli-box">
+          <div class="cli-text" id="cliServerText">./llama-server -m Qwen3.8-Flash-Next-Custom.gguf -ngl 999 -c 8192 -ub 512 --vram-expert-budget-mb 4100 -ot "token_embd=CPU" --threads 6 --threads-batch 12</div>
+          <button class="mini primary" onclick="copyCliServer()">Copiar Server</button>
+        </div>
+
+        <div class="cli-box" style="margin-top: 6px;">
+          <div class="cli-text" id="cliQuantizeText">llama-quantize.exe --imatrix ...</div>
+          <button class="mini" onclick="copyCliQuantize()">Copiar Quantize</button>
+        </div>
+
+        <div class="types-summary" id="typesBreakdown"></div>
+      </div>
+    </div>
+
+    <!-- Table of all 1,224 tensors -->
+    <div class="card" id="tensorsCard">
+      <div class="card-title">
+        <span>3. Tensores do Modelo (1.224)</span>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <button class="mini" onclick="copyTensorTypesFile()">Copiar .txt</button>
+          <button class="mini primary" onclick="downloadTensorTypesFile()">Baixar .txt</button>
+        </div>
+      </div>
+
+      <div class="search-bar">
+        <input type="text" id="searchFilter" class="search-input" placeholder="Filtrar em TODOS os campos (ex: blk.2, camada 4, q8_0, 450MB, GPU, RAM, shexp)..." oninput="renderTable()">
+        
+        <select id="filterLayerSelect" class="filter-select" onchange="renderTable()">
+          <option value="all">Todas as Camadas</option>
+          <option value="global">Global (Embd / Out)</option>
+          <option value="0-3">Camadas 0..3 (Entrada)</option>
+          <option value="4-15">Camadas 4..15 (Miolo 1)</option>
+          <option value="16-27">Camadas 16..27 (Miolo 2)</option>
+          <option value="28-39">Camadas 28..39 (Miolo 3)</option>
+          <option value="40-47">Camadas 40..47 (Saida)</option>
+        </select>
+
+        <select id="filterQuantSelect" class="filter-select" onchange="renderTable()">
+          <option value="all">Todos os Quants</option>
+          <option value="iq4_nl">IQ4_NL</option>
+          <option value="q3_k">Q3_K / Q3_K_M</option>
+          <option value="q6_k">Q6_K</option>
+          <option value="q8_0">Q8_0</option>
+          <option value="q4_k">Q4_K</option>
+          <option value="q2_k">Q2_K</option>
+          <option value="f32">F32</option>
+        </select>
+
+        <div class="filter-tabs">
+          <button id="btnFilterAll" class="active" onclick="setDeviceFilter('all')">Todos (1.224)</button>
+          <button id="btnFilterMoe" onclick="setDeviceFilter('moe')">MoE Experts (<span id="countMoeTab">144</span>)</button>
+          <button id="btnFilterGpu" onclick="setDeviceFilter('gpu')">GPU Dense (<span id="countGpuTab">0</span>)</button>
+          <button id="btnFilterRam" onclick="setDeviceFilter('ram')">RAM Cold (<span id="countRamTab">0</span>)</button>
+          <button id="btnFilterIncompat" onclick="setDeviceFilter('incompat')">Incompativeis (<span id="countIncompatTab">0</span>)</button>
+        </div>
+
+        <span id="filterCount" style="font-size: 0.78rem; color: var(--text-muted); font-family: var(--font-mono);">1.224 tensores</span>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th class="sortable" onclick="setSortColumn('idx')" style="width: 48px;" title="Clique para ordenar"># <span id="sort_idx" class="sort-icon">[^]</span></th>
+              <th class="sortable" onclick="setSortColumn('layerNum')" style="width: 78px;" title="Clique para ordenar por camada">Camada <span id="sort_layerNum" class="sort-icon"></span></th>
+              <th class="sortable" onclick="setSortColumn('name')" title="Clique para ordenar por nome">Nome do Tensor <span id="sort_name" class="sort-icon"></span></th>
+              <th class="sortable" onclick="setSortColumn('device')" title="Clique para ordenar por localizacao">Localizacao <span id="sort_device" class="sort-icon"></span></th>
+              <th class="sortable col-hide-mobile" onclick="setSortColumn('shape')" title="Clique para ordenar por formato">Shape <span id="sort_shape" class="sort-icon"></span></th>
+              <th class="sortable col-hide-mobile" onclick="setSortColumn('n_elements')" title="Clique para ordenar por parametros">Params <span id="sort_n_elements" class="sort-icon"></span></th>
+              <th class="sortable" onclick="setSortColumn('quantType')" title="Clique para ordenar por quant">Quant <span id="sort_quantType" class="sort-icon"></span></th>
+              <th class="sortable" onclick="setSortColumn('sizeBytes')" title="Clique para ordenar por tamanho">Tamanho <span id="sort_sizeBytes" class="sort-icon"></span></th>
+              <th class="sortable col-hide-mobile" onclick="setSortColumn('rule')" title="Clique para ordenar por regra">Regra <span id="sort_rule" class="sort-icon"></span></th>
+            </tr>
+          </thead>
+          <tbody id="tensorTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Floating Sticky Bar -->
+  <div class="mobile-sticky-bar" id="mobileStickyBar">
+    <div class="mobile-sticky-info">
+      <div>VRAM: <strong id="stickyVramVal" style="color: var(--text-bright);">--</strong> • RAM: <strong id="stickyRamVal" style="color: var(--orange);">--</strong></div>
+      <div style="font-size: 0.7rem; color: var(--text-muted);"><span id="stickyTpsVal" style="color: var(--success); font-weight: 600;">-- t/s</span> • <span id="stickyPplVal">PPL --</span></div>
+    </div>
+    <div style="display: flex; gap: 6px;">
+      <button class="mini primary" onclick="scrollToTop()">Topo</button>
+    </div>
+  </div>
+
+  <script>
+    const TENSORS_DATA = [{"name":"output.weight","shape":[2560,248320],"n_elements":635699200,"orig_type":"bf16"},{"name":"output_hc_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"output_hc_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"output_hc_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"per_layer_token_embd.weight","shape":[160,320001536],"n_elements":51200245760,"orig_type":"bf16"},{"name":"token_embd.weight","shape":[2560,248320],"n_elements":635699200,"orig_type":"bf16"},{"name":"blk.0.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.0.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.0.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.0.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.0.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.0.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.0.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.0.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.0.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.0.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.0.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.0.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.0.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.0.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.0.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.0.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.0.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.0.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.0.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.0.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.0.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.0.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.0.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.0.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.0.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.1.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.1.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.1.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.1.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.1.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.1.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.1.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.1.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.1.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.1.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.1.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.1.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.1.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.1.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.1.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.1.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.1.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.1.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.1.ple_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.1.ple_key.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.1.ple_norm_conv.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.1.ple_norm_key.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.1.ple_norm_query.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.1.ple_value.weight","shape":[2560,2560],"n_elements":6553600,"orig_type":"bf16"},{"name":"blk.1.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.1.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.1.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.1.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.1.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.1.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.1.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.2.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.2.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.2.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.2.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.2.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.2.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.2.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.2.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.2.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.2.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.2.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.2.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.2.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.2.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.2.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.2.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.2.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.2.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.2.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.2.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.2.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.2.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.2.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.2.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.2.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.3.attn_k.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.3.attn_k_norm.weight","shape":[256,1],"n_elements":256,"orig_type":"f32"},{"name":"blk.3.attn_output.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.3.attn_q.weight","shape":[2560,12288],"n_elements":31457280,"orig_type":"bf16"},{"name":"blk.3.attn_q_norm.weight","shape":[256,1],"n_elements":256,"orig_type":"f32"},{"name":"blk.3.attn_v.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.3.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.3.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.3.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.3.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.3.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.3.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.3.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.3.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.3.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.3.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.3.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.3.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.3.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.3.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.3.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.3.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.3.indexer.k_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.3.indexer.k_proj.weight","shape":[2560,128],"n_elements":327680,"orig_type":"bf16"},{"name":"blk.3.indexer.q_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.3.indexer.q_proj.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.4.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.4.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.4.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.4.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.4.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.4.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.4.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.4.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.4.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.4.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.4.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.4.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.4.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.4.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.4.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.4.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.4.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.4.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.4.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.4.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.4.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.4.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.4.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.4.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.4.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.5.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.5.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.5.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.5.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.5.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.5.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.5.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.5.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.5.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.5.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.5.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.5.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.5.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.5.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.5.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.5.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.5.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.5.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.5.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.5.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.5.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.5.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.5.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.5.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.5.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.6.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.6.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.6.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.6.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.6.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.6.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.6.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.6.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.6.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.6.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.6.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.6.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.6.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.6.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.6.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.6.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.6.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.6.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.6.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.6.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.6.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.6.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.6.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.6.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.6.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.7.attn_k.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.7.attn_k_norm.weight","shape":[256,1],"n_elements":256,"orig_type":"f32"},{"name":"blk.7.attn_output.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.7.attn_q.weight","shape":[2560,12288],"n_elements":31457280,"orig_type":"bf16"},{"name":"blk.7.attn_q_norm.weight","shape":[256,1],"n_elements":256,"orig_type":"f32"},{"name":"blk.7.attn_v.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.7.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.7.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.7.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.7.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.7.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.7.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.7.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.7.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.7.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.7.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.7.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.7.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.7.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.7.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.7.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.7.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.7.indexer.k_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.7.indexer.k_proj.weight","shape":[2560,128],"n_elements":327680,"orig_type":"bf16"},{"name":"blk.7.indexer.q_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.7.indexer.q_proj.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.8.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.8.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.8.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.8.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.8.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.8.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.8.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.8.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.8.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.8.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.8.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.8.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.8.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.8.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.8.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.8.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.8.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.8.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.8.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.8.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.8.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.8.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.8.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.8.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.8.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.9.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.9.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.9.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.9.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.9.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.9.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.9.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.9.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.9.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.9.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.9.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.9.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.9.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.9.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.9.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.9.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.9.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.9.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.9.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.9.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.9.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.9.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.9.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.9.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.9.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.10.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.10.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.10.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.10.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.10.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.10.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.10.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.10.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.10.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.10.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.10.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.10.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.10.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.10.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.10.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.10.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.10.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.10.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.10.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.10.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.10.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.10.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.10.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.10.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.10.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.11.attn_k.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.11.attn_k_norm.weight","shape":[256,1],"n_elements":256,"orig_type":"f32"},{"name":"blk.11.attn_output.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.11.attn_q.weight","shape":[2560,12288],"n_elements":31457280,"orig_type":"bf16"},{"name":"blk.11.attn_q_norm.weight","shape":[256,1],"n_elements":256,"orig_type":"f32"},{"name":"blk.11.attn_v.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.11.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.11.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.11.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.11.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.11.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.11.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.11.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.11.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.11.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.11.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.11.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.11.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.11.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.11.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.11.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.11.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.11.indexer.k_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.11.indexer.k_proj.weight","shape":[2560,128],"n_elements":327680,"orig_type":"bf16"},{"name":"blk.11.indexer.q_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.11.indexer.q_proj.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.12.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.12.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.12.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.12.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.12.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.12.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.12.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.12.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.12.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.12.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.12.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.12.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.12.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.12.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.12.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.12.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.12.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.12.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.12.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.12.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.12.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.12.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.12.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.12.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.12.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.13.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.13.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.13.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.13.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.13.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.13.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.13.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.13.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.13.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.13.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.13.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.13.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.13.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.13.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.13.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.13.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.13.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.13.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.13.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.13.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.13.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.13.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.13.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.13.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.13.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.14.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.14.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.14.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.14.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.14.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.14.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.14.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.14.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.14.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.14.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.14.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.14.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.14.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.14.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.14.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.14.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.14.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.14.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.14.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.14.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.14.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.14.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.14.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.14.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.14.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.15.attn_k.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.15.attn_k_norm.weight","shape":[256,1],"n_elements":256,"orig_type":"f32"},{"name":"blk.15.attn_output.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.15.attn_q.weight","shape":[2560,12288],"n_elements":31457280,"orig_type":"bf16"},{"name":"blk.15.attn_q_norm.weight","shape":[256,1],"n_elements":256,"orig_type":"f32"},{"name":"blk.15.attn_v.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.15.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.15.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.15.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.15.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.15.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.15.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.15.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.15.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.15.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.15.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.15.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.15.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.15.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.15.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.15.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.15.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.15.indexer.k_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.15.indexer.k_proj.weight","shape":[2560,128],"n_elements":327680,"orig_type":"bf16"},{"name":"blk.15.indexer.q_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.15.indexer.q_proj.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.16.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.16.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.16.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.16.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.16.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.16.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.16.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.16.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.16.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.16.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.16.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.16.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.16.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.16.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.16.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.16.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.16.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.16.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.16.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.16.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.16.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.16.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.16.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.16.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.16.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.17.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.17.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.17.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.17.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.17.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.17.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.17.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.17.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.17.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.17.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.17.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.17.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.17.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.17.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.17.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.17.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.17.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.17.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.17.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.17.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.17.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.17.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.17.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.17.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.17.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.18.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.18.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.18.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.18.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.18.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.18.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.18.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.18.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.18.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.18.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.18.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.18.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.18.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.18.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.18.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.18.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.18.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.18.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.18.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.18.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.18.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.18.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.18.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.18.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.18.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.19.attn_k.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.19.attn_k_norm.weight","shape":[256,1],"n_elements":256,"orig_type":"f32"},{"name":"blk.19.attn_output.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.19.attn_q.weight","shape":[2560,12288],"n_elements":31457280,"orig_type":"bf16"},{"name":"blk.19.attn_q_norm.weight","shape":[256,1],"n_elements":256,"orig_type":"f32"},{"name":"blk.19.attn_v.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.19.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.19.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.19.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.19.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.19.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.19.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.19.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.19.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.19.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.19.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.19.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.19.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.19.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.19.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.19.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.19.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.19.indexer.k_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.19.indexer.k_proj.weight","shape":[2560,128],"n_elements":327680,"orig_type":"bf16"},{"name":"blk.19.indexer.q_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.19.indexer.q_proj.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.20.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.20.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.20.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.20.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.20.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.20.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.20.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.20.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.20.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.20.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.20.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.20.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.20.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.20.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.20.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.20.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.20.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.20.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.20.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.20.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.20.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.20.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.20.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.20.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.20.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.21.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.21.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.21.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.21.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.21.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.21.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.21.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.21.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.21.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.21.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.21.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.21.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.21.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.21.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.21.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.21.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.21.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.21.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.21.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.21.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.21.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.21.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.21.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.21.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.21.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.22.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.22.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.22.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.22.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.22.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.22.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.22.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.22.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.22.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.22.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.22.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.22.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.22.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.22.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.22.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.22.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.22.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.22.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.22.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.22.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.22.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.22.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.22.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.22.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.22.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.23.attn_k.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.23.attn_k_norm.weight","shape":[256,1],"n_elements":256,"orig_type":"f32"},{"name":"blk.23.attn_output.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.23.attn_q.weight","shape":[2560,12288],"n_elements":31457280,"orig_type":"bf16"},{"name":"blk.23.attn_q_norm.weight","shape":[256,1],"n_elements":256,"orig_type":"f32"},{"name":"blk.23.attn_v.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.23.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.23.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.23.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.23.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.23.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.23.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.23.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.23.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.23.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.23.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.23.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.23.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.23.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.23.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.23.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.23.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.23.indexer.k_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.23.indexer.k_proj.weight","shape":[2560,128],"n_elements":327680,"orig_type":"bf16"},{"name":"blk.23.indexer.q_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.23.indexer.q_proj.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.24.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.24.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.24.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.24.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.24.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.24.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.24.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.24.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.24.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.24.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.24.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.24.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.24.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.24.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.24.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.24.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.24.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.24.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.24.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.24.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.24.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.24.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.24.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.24.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.24.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.25.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.25.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.25.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.25.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.25.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.25.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.25.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.25.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.25.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.25.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.25.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.25.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.25.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.25.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.25.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.25.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.25.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.25.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.25.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.25.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.25.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.25.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.25.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.25.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.25.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.26.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.26.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.26.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.26.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.26.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.26.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.26.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.26.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.26.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.26.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.26.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.26.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.26.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.26.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.26.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.26.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.26.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.26.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.26.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.26.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.26.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.26.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.26.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.26.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.26.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.27.attn_k.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.27.attn_k_norm.weight","shape":[256,1],"n_elements":256,"orig_type":"f32"},{"name":"blk.27.attn_output.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.27.attn_q.weight","shape":[2560,12288],"n_elements":31457280,"orig_type":"bf16"},{"name":"blk.27.attn_q_norm.weight","shape":[256,1],"n_elements":256,"orig_type":"f32"},{"name":"blk.27.attn_v.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.27.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.27.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.27.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.27.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.27.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.27.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.27.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.27.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.27.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.27.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.27.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.27.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.27.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.27.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.27.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.27.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.27.indexer.k_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.27.indexer.k_proj.weight","shape":[2560,128],"n_elements":327680,"orig_type":"bf16"},{"name":"blk.27.indexer.q_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.27.indexer.q_proj.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.28.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.28.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.28.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.28.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.28.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.28.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.28.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.28.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.28.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.28.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.28.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.28.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.28.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.28.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.28.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.28.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.28.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.28.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.28.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.28.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.28.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.28.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.28.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.28.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.28.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.29.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.29.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.29.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.29.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.29.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.29.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.29.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.29.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.29.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.29.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.29.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.29.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.29.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.29.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.29.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.29.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.29.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.29.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.29.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.29.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.29.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.29.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.29.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.29.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.29.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.30.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.30.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.30.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.30.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.30.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.30.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.30.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.30.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.30.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.30.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.30.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.30.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.30.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.30.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.30.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.30.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.30.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.30.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.30.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.30.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.30.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.30.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.30.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.30.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.30.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.31.attn_k.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.31.attn_k_norm.weight","shape":[256,1],"n_elements":256,"orig_type":"f32"},{"name":"blk.31.attn_output.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.31.attn_q.weight","shape":[2560,12288],"n_elements":31457280,"orig_type":"bf16"},{"name":"blk.31.attn_q_norm.weight","shape":[256,1],"n_elements":256,"orig_type":"f32"},{"name":"blk.31.attn_v.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.31.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.31.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.31.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.31.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.31.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.31.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.31.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.31.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.31.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.31.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.31.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.31.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.31.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.31.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.31.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.31.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.31.indexer.k_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.31.indexer.k_proj.weight","shape":[2560,128],"n_elements":327680,"orig_type":"bf16"},{"name":"blk.31.indexer.q_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.31.indexer.q_proj.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.32.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.32.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.32.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.32.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.32.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.32.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.32.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.32.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.32.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.32.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.32.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.32.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.32.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.32.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.32.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.32.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.32.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.32.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.32.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.32.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.32.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.32.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.32.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.32.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.32.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.33.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.33.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.33.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.33.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.33.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.33.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.33.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.33.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.33.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.33.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.33.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.33.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.33.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.33.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.33.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.33.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.33.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.33.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.33.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.33.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.33.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.33.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.33.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.33.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.33.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.34.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.34.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.34.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.34.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.34.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.34.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.34.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.34.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.34.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.34.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.34.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.34.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.34.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.34.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.34.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.34.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.34.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.34.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.34.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.34.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.34.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.34.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.34.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.34.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.34.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.35.attn_k.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.35.attn_k_norm.weight","shape":[256,1],"n_elements":256,"orig_type":"f32"},{"name":"blk.35.attn_output.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.35.attn_q.weight","shape":[2560,12288],"n_elements":31457280,"orig_type":"bf16"},{"name":"blk.35.attn_q_norm.weight","shape":[256,1],"n_elements":256,"orig_type":"f32"},{"name":"blk.35.attn_v.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.35.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.35.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.35.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.35.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.35.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.35.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.35.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.35.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.35.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.35.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.35.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.35.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.35.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.35.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.35.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.35.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.35.indexer.k_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.35.indexer.k_proj.weight","shape":[2560,128],"n_elements":327680,"orig_type":"bf16"},{"name":"blk.35.indexer.q_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.35.indexer.q_proj.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.36.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.36.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.36.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.36.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.36.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.36.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.36.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.36.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.36.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.36.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.36.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.36.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.36.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.36.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.36.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.36.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.36.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.36.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.36.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.36.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.36.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.36.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.36.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.36.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.36.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.37.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.37.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.37.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.37.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.37.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.37.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.37.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.37.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.37.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.37.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.37.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.37.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.37.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.37.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.37.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.37.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.37.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.37.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.37.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.37.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.37.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.37.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.37.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.37.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.37.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.38.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.38.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.38.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.38.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.38.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.38.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.38.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.38.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.38.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.38.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.38.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.38.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.38.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.38.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.38.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.38.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.38.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.38.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.38.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.38.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.38.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.38.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.38.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.38.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.38.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.39.attn_k.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.39.attn_k_norm.weight","shape":[256,1],"n_elements":256,"orig_type":"f32"},{"name":"blk.39.attn_output.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.39.attn_q.weight","shape":[2560,12288],"n_elements":31457280,"orig_type":"bf16"},{"name":"blk.39.attn_q_norm.weight","shape":[256,1],"n_elements":256,"orig_type":"f32"},{"name":"blk.39.attn_v.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.39.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.39.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.39.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.39.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.39.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.39.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.39.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.39.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.39.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.39.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.39.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.39.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.39.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.39.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.39.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.39.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.39.indexer.k_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.39.indexer.k_proj.weight","shape":[2560,128],"n_elements":327680,"orig_type":"bf16"},{"name":"blk.39.indexer.q_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.39.indexer.q_proj.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.40.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.40.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.40.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.40.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.40.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.40.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.40.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.40.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.40.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.40.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.40.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.40.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.40.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.40.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.40.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.40.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.40.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.40.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.40.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.40.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.40.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.40.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.40.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.40.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.40.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.41.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.41.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.41.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.41.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.41.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.41.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.41.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.41.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.41.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.41.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.41.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.41.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.41.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.41.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.41.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.41.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.41.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.41.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.41.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.41.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.41.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.41.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.41.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.41.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.41.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.42.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.42.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.42.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.42.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.42.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.42.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.42.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.42.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.42.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.42.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.42.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.42.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.42.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.42.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.42.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.42.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.42.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.42.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.42.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.42.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.42.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.42.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.42.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.42.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.42.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.43.attn_k.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.43.attn_k_norm.weight","shape":[256,1],"n_elements":256,"orig_type":"f32"},{"name":"blk.43.attn_output.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.43.attn_q.weight","shape":[2560,12288],"n_elements":31457280,"orig_type":"bf16"},{"name":"blk.43.attn_q_norm.weight","shape":[256,1],"n_elements":256,"orig_type":"f32"},{"name":"blk.43.attn_v.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.43.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.43.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.43.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.43.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.43.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.43.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.43.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.43.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.43.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.43.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.43.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.43.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.43.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.43.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.43.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.43.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.43.indexer.k_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.43.indexer.k_proj.weight","shape":[2560,128],"n_elements":327680,"orig_type":"bf16"},{"name":"blk.43.indexer.q_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.43.indexer.q_proj.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.44.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.44.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.44.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.44.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.44.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.44.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.44.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.44.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.44.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.44.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.44.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.44.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.44.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.44.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.44.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.44.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.44.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.44.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.44.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.44.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.44.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.44.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.44.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.44.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.44.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.45.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.45.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.45.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.45.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.45.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.45.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.45.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.45.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.45.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.45.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.45.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.45.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.45.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.45.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.45.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.45.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.45.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.45.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.45.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.45.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.45.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.45.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.45.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.45.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.45.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.46.attn_gate.weight","shape":[2560,6144],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.46.attn_qkv.weight","shape":[2560,10240],"n_elements":26214400,"orig_type":"bf16"},{"name":"blk.46.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.46.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.46.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.46.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.46.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.46.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.46.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.46.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.46.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.46.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.46.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.46.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.46.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.46.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.46.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.46.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.46.ssm_a","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.46.ssm_alpha.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.46.ssm_beta.weight","shape":[2560,48],"n_elements":122880,"orig_type":"bf16"},{"name":"blk.46.ssm_conv1d.weight","shape":[4,10240],"n_elements":40960,"orig_type":"f32"},{"name":"blk.46.ssm_dt.bias","shape":[48,1],"n_elements":48,"orig_type":"f32"},{"name":"blk.46.ssm_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.46.ssm_out.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.47.attn_k.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.47.attn_k_norm.weight","shape":[256,1],"n_elements":256,"orig_type":"f32"},{"name":"blk.47.attn_output.weight","shape":[6144,2560],"n_elements":15728640,"orig_type":"bf16"},{"name":"blk.47.attn_q.weight","shape":[2560,12288],"n_elements":31457280,"orig_type":"bf16"},{"name":"blk.47.attn_q_norm.weight","shape":[256,1],"n_elements":256,"orig_type":"f32"},{"name":"blk.47.attn_v.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"},{"name":"blk.47.ffn_down_exps.weight","shape":[640,2560,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.47.ffn_down_shexp.weight","shape":[640,2560],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.47.ffn_gate_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.47.ffn_gate_inp.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"f32"},{"name":"blk.47.ffn_gate_inp_shexp.weight","shape":[2560,1],"n_elements":2560,"orig_type":"f32"},{"name":"blk.47.ffn_gate_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.47.ffn_up_exps.weight","shape":[2560,640,512],"n_elements":838860800,"orig_type":"bf16"},{"name":"blk.47.ffn_up_shexp.weight","shape":[2560,640],"n_elements":1638400,"orig_type":"bf16"},{"name":"blk.47.hc_attn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.47.hc_attn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.47.hc_attn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.47.hc_attn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.47.hc_ffn_down.weight","shape":[10240,320],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.47.hc_ffn_inject.weight","shape":[10240,4],"n_elements":40960,"orig_type":"bf16"},{"name":"blk.47.hc_ffn_norm.weight","shape":[10240,1],"n_elements":10240,"orig_type":"f32"},{"name":"blk.47.hc_ffn_up.weight","shape":[320,10240],"n_elements":3276800,"orig_type":"bf16"},{"name":"blk.47.indexer.k_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.47.indexer.k_proj.weight","shape":[2560,128],"n_elements":327680,"orig_type":"bf16"},{"name":"blk.47.indexer.q_norm.weight","shape":[128,1],"n_elements":128,"orig_type":"f32"},{"name":"blk.47.indexer.q_proj.weight","shape":[2560,512],"n_elements":1310720,"orig_type":"bf16"}];
+
+    const QUANT_SIZES = {"f32": {"block": 1, "size": 4, "bpw": 32.0}, "f16": {"block": 1, "size": 2, "bpw": 16.0}, "bf16": {"block": 1, "size": 2, "bpw": 16.0}, "q4_0": {"block": 32, "size": 18, "bpw": 4.5}, "q4_1": {"block": 32, "size": 20, "bpw": 5.0}, "q5_0": {"block": 32, "size": 22, "bpw": 5.5}, "q5_1": {"block": 32, "size": 24, "bpw": 6.0}, "q8_0": {"block": 32, "size": 34, "bpw": 8.5}, "q8_1": {"block": 32, "size": 40, "bpw": 10.0}, "q2_k": {"block": 256, "size": 84, "bpw": 2.625}, "q3_k": {"block": 256, "size": 110, "bpw": 3.4375}, "q4_k": {"block": 256, "size": 144, "bpw": 4.5}, "q5_k": {"block": 256, "size": 176, "bpw": 5.5}, "q6_k": {"block": 256, "size": 210, "bpw": 6.5625}, "q8_k": {"block": 256, "size": 292, "bpw": 9.125}, "iq2_xxs": {"block": 256, "size": 66, "bpw": 2.0625}, "iq2_xs": {"block": 256, "size": 74, "bpw": 2.3125}, "iq3_xxs": {"block": 256, "size": 98, "bpw": 3.0625}, "iq1_s": {"block": 256, "size": 50, "bpw": 1.5625}, "iq4_nl": {"block": 32, "size": 18, "bpw": 4.5}, "iq3_s": {"block": 256, "size": 110, "bpw": 3.4375}, "iq2_s": {"block": 256, "size": 82, "bpw": 2.5625}, "iq4_xs": {"block": 256, "size": 136, "bpw": 4.25}, "iq1_m": {"block": 256, "size": 56, "bpw": 1.75}};
+
+    const PRESETS = {
+  "ttjv_current": "--tensor-type 'per_layer_token_embd=iq4_nl' `\n  --tensor-type 'ffn_down_shexp=q8_0' `\n  --tensor-type 'ffn_(gate|up)_shexp=q6_k' `\n  --tensor-type 'hc_(attn|ffn)_up=q8_0' `\n  --tensor-type 'hc_(attn|ffn)_down=q6_k' `\n  --tensor-type '^token_embd=iq4_nl' `\n  --tensor-type 'output_hc_(down|up)=iq4_nl' `\n  --tensor-type 'blk\\.(2)\\.ffn_down_exps=q8_0' `\n  --tensor-type 'blk\\.(4)\\.ffn_down_exps=q8_0' `\n  --tensor-type 'blk\\.(30)\\.ffn_down_exps=q8_0' `\n  --tensor-type 'blk\\.(4[6-7])\\.ffn_down_exps=q8_0' `\n  --tensor-type 'ffn_down_exps=iq4_nl' `\n  --tensor-type 'blk\\.([4-9]|1[0-9]|2[0-3])\\.ffn_(gate|up)_exps=q3_k' `\n  --tensor-type 'blk\\.(0)\\.ffn_(gate|up)_exps=iq4_nl' `\n  --tensor-type 'blk\\.(2)\\.ffn_(gate|up)_exps=iq4_nl' `\n  --tensor-type 'ffn_gate_exps=iq4_nl' `\n  --tensor-type 'ffn_up_exps=q3_k' `\n  --tensor-type '.*=q6_k'",
+  "ttjv_q3": "--tensor-type 'output\\.weight=q8_0' `\n  --tensor-type 'output_hc.*=iq4_nl' `\n  --tensor-type 'token_embd\\.weight=q6_k' `\n  --tensor-type 'per_layer_token_embd\\.weight=q5_1' `\n  --tensor-type 'ffn_down_exps=iq4_nl' `\n  --tensor-type 'blk\\.(0|1|2|3|4[0-7])\\.ffn_(gate|up)_exps=iq4_nl' `\n  --tensor-type 'blk\\.([4-9]|[1-3][0-9])\\.ffn_(gate|up)_exps=q3_k' `\n  --tensor-type '.*shexp.*=q6_k' `\n  --tensor-type 'attn_(qkv|gate)=q6_k' `\n  --tensor-type 'ssm_(alpha|beta)=q8_0' `\n  --tensor-type 'ssm_out=q6_k' `\n  --tensor-type '.*=q4_k'",
+  "ttjv_q2": "--tensor-type 'output\\.weight=q8_0' `\n  --tensor-type 'output_hc.*=iq4_nl' `\n  --tensor-type 'token_embd\\.weight=q6_k' `\n  --tensor-type 'per_layer_token_embd\\.weight=q5_1' `\n  --tensor-type 'ffn_down_exps=iq4_nl' `\n  --tensor-type 'blk\\.(0|1|2|3|4[0-7])\\.ffn_(gate|up)_exps=iq4_nl' `\n  --tensor-type 'blk\\.([4-9]|[1-3][0-9])\\.ffn_(gate|up)_exps=q2_k' `\n  --tensor-type '.*shexp.*=q6_k' `\n  --tensor-type 'attn_(qkv|gate)=q6_k' `\n  --tensor-type 'ssm_(alpha|beta)=q8_0' `\n  --tensor-type 'ssm_out=q6_k' `\n  --tensor-type '.*=q4_k'",
+  "ttjv_iq4_gate": "--tensor-type 'output\\.weight=q8_0' `\n  --tensor-type 'output_hc.*=iq4_nl' `\n  --tensor-type 'token_embd\\.weight=q6_k' `\n  --tensor-type 'per_layer_token_embd\\.weight=q5_1' `\n  --tensor-type 'ffn_down_exps=iq4_nl' `\n  --tensor-type 'blk\\.(0|1|2|3|4|5|3[8-9]|4[0-7])\\.ffn_(gate|up)_exps=iq4_nl' `\n  --tensor-type 'blk\\.([6-9]|[1-2][0-9]|3[0-7])\\.ffn_gate_exps=iq4_nl' `\n  --tensor-type 'blk\\.([6-9]|[1-2][0-9]|3[0-7])\\.ffn_up_exps=q3_k' `\n  --tensor-type '.*shexp.*=q6_k' `\n  --tensor-type 'attn_(qkv|gate)=q6_k' `\n  --tensor-type 'ssm_(alpha|beta)=q8_0' `\n  --tensor-type 'ssm_out=q6_k' `\n  --tensor-type '.*=q4_k'",
+  "pure_iq4_nl": "--tensor-type 'output\\.weight=q8_0' `\n  --tensor-type 'output_hc.*=iq4_nl' `\n  --tensor-type 'token_embd\\.weight=q6_k' `\n  --tensor-type 'per_layer_token_embd\\.weight=q5_1' `\n  --tensor-type 'ffn_.*_exps=iq4_nl' `\n  --tensor-type '.*shexp.*=q6_k' `\n  --tensor-type 'attn_(qkv|gate)=q6_k' `\n  --tensor-type 'ssm_(alpha|beta)=q8_0' `\n  --tensor-type 'ssm_out=q6_k' `\n  --tensor-type '.*=q4_k'",
+  "ultra_compact": "--tensor-type 'output\\.weight=q8_0' `\n  --tensor-type 'output_hc.*=iq4_nl' `\n  --tensor-type 'token_embd\\.weight=q6_k' `\n  --tensor-type 'per_layer_token_embd\\.weight=q5_1' `\n  --tensor-type 'ffn_down_exps=iq4_nl' `\n  --tensor-type 'blk\\.(0|1|4[6-7])\\.ffn_(gate|up)_exps=iq4_nl' `\n  --tensor-type 'blk\\.([2-9]|[1-3][0-9]|4[0-5])\\.ffn_(gate|up)_exps=iq2_xxs' `\n  --tensor-type '.*shexp.*=q6_k' `\n  --tensor-type 'attn_(qkv|gate)=q6_k' `\n  --tensor-type 'ssm_(alpha|beta)=q8_0' `\n  --tensor-type 'ssm_out=q6_k' `\n  --tensor-type '.*=q4_k'"
+};
+
+    const TOTAL_VRAM_MB = 10240; // RTX 3080 10GB GDDR6X
+    const USABLE_RAM_MB = 62156; // 60.7 GB usable DDR4 out of 64 GB
+
+    let calculatedTensors = [];
+
+    let sortCol = "idx";
+    let sortAsc = true;
+
+    function setSortColumn(col) {
+      if (sortCol === col) {
+        sortAsc = !sortAsc;
+      } else {
+        sortCol = col;
+        sortAsc = true;
+      }
+      renderTable();
+    }
+
+    function getLayerSortVal(t) {
+      if (t.layerNum !== null) return t.layerNum;
+      if (t.name.startsWith("token_embd") || t.name.startsWith("per_layer")) return -1;
+      return 100;
+    }
+
+    function getSortVal(t, col) {
+      if (col === "idx") return t.idx;
+      if (col === "layerNum") return getLayerSortVal(t);
+      if (col === "name") return t.name.toLowerCase();
+      if (col === "device") return t.device.toLowerCase();
+      if (col === "shape") return t.n_elements;
+      if (col === "n_elements") return t.n_elements;
+      if (col === "quantType") return t.quantType.toLowerCase();
+      if (col === "sizeBytes") return t.sizeBytes;
+      if (col === "rule") return t.rule.toLowerCase();
+      return 0;
+    }
+
+    let currentDeviceFilter = "all";
+
+    function scrollToTop() {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function setCtx(val) {
+      document.getElementById("ctxInput").value = val;
+      runSimulation();
+    }
+
+    function onRulesInput() {
+      document.querySelectorAll('.presets-container button').forEach(b => b.classList.remove('active'));
+      runSimulation();
+    }
+
+    function onBudgetChange(val) {
+      document.getElementById("vramBudgetDisplay").innerText = parseInt(val, 10).toLocaleString("pt-BR") + " MB";
+      runSimulation();
+    }
+
+    function onEarlyExitChange(val) {
+      const v = parseInt(val, 10);
+      const display = document.getElementById("earlyExitDisplay");
+      if (v === 48) {
+        display.innerText = "48 / 48 (Full)";
+        display.style.color = "var(--success)";
+      } else {
+        display.innerText = `${v} / 48 (Exit L${v})`;
+        display.style.color = "var(--warning)";
+      }
+      runSimulation();
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById("toastMsg");
+      t.innerText = msg;
+      t.classList.add("show");
+      setTimeout(() => t.classList.remove("show"), 2200);
+    }
+
+    function parseRules(text) {
+      const lines = text.split(/[\r\n]+/);
+      const rules = [];
+
+      for (let rawLine of lines) {
+        let line = rawLine.trim();
+        if (!line || line.startsWith("#") || line.startsWith("//")) continue;
+
+        if (line.endsWith("`") || line.endsWith("\\")) {
+          line = line.substring(0, line.length - 1).trim();
+        }
+
+        let target = line;
+        if (target.startsWith("--tensor-type")) {
+          target = target.substring(13).trim();
+        }
+
+        if ((target.startsWith("'") && target.endsWith("'")) || (target.startsWith('"') && target.endsWith('"'))) {
+          target = target.substring(1, target.length - 1).trim();
+        }
+
+        let patternStr = "";
+        let typeStr = "";
+
+        const eqIdx = target.indexOf("=");
+        if (eqIdx !== -1) {
+          patternStr = target.substring(0, eqIdx).trim();
+          typeStr = target.substring(eqIdx + 1).trim().toLowerCase();
+        }
+
+        if (patternStr && typeStr) {
+          try {
+            const regex = new RegExp(patternStr, "i");
+            rules.push({ regex, type: typeStr, patternStr });
+          } catch (e) {
+            console.warn("Invalid regex:", patternStr);
+          }
+        }
+      }
+      return rules;
+    }
+
+    function getTensorSize(nElements, quantType) {
+      const q = QUANT_SIZES[quantType];
+      if (!q) return nElements * 2; // fallback to 16-bit
+      return Math.floor((nElements * q.size) / q.block);
+    }
+
+    function is1DTensor(name, shape) {
+      if (shape.length <= 1) return true;
+      if (shape.length === 2 && (shape[0] === 1 || shape[1] === 1)) return true;
+      if (name.endsWith(".bias") || (name.endsWith(".weight") && (name.includes("_norm") || name.includes("norm.")))) {
+        if (shape.length <= 1 || (shape.length === 2 && Math.min(shape[0], shape[1]) === 1)) return true;
+      }
+      if (name.endsWith(".ssm_a") || name.endsWith(".ssm_dt.bias") || name.endsWith(".ssm_norm.weight") || name.endsWith(".ssm_conv1d.weight")) {
+        return true;
+      }
+      return false;
+    }
+
+    function setDeviceFilter(filter) {
+      currentDeviceFilter = filter;
+      document.getElementById("btnFilterAll").className = (filter === 'all') ? "active" : "";
+      document.getElementById("btnFilterMoe").className = (filter === 'moe') ? "active" : "";
+      document.getElementById("btnFilterGpu").className = (filter === 'gpu') ? "active" : "";
+      document.getElementById("btnFilterRam").className = (filter === 'ram') ? "active" : "";
+      document.getElementById("btnFilterIncompat").className = (filter === 'incompat') ? "active" : "";
+      renderTable();
+    }
+
+    function runSimulation() {
+      const t0 = performance.now();
+      const rulesText = document.getElementById("rulesInput").value;
+      const fallback = document.getElementById("fallbackType").value.toLowerCase();
+      const tokenEmbdCpu = document.getElementById("tokenEmbdCpuCheck").checked;
+      const lazyTokenEmbd = document.getElementById("lazyTokenEmbdCheck").checked;
+      const nglOffloadDense = document.getElementById("nglOffloadDenseCheck").checked;
+
+      const ctxTokens = parseInt(document.getElementById("ctxInput").value, 10) || 8192;
+      const ubatchSize = parseInt(document.getElementById("ubatchInput").value, 10) || 512;
+      const kvQuant = document.getElementById("kvQuantType").value;
+      const vramBudgetMb = parseInt(document.getElementById("vramBudgetInput").value, 10) || 4100;
+      const earlyExitLayer = parseInt(document.getElementById("earlyExitInput").value, 10) || 48;
+      const ramOsMb = parseFloat(document.getElementById("ramOsInput").value) || 512.0;
+
+      document.getElementById("ctxSizeDisplay").innerText = ctxTokens.toLocaleString("pt-BR");
+      document.getElementById("ubatchDisplay").innerText = ubatchSize;
+      document.getElementById("vramBudgetDisplay").innerText = vramBudgetMb.toLocaleString("pt-BR") + " MB";
+      document.getElementById("ramOsDisplay").innerText = (ramOsMb >= 1024 ? (ramOsMb / 1024).toFixed(1) + " GB" : ramOsMb.toFixed(0) + " MB");
+
+      const rules = parseRules(rulesText);
+
+      let totalBytes = 0;
+      let totalParams = 0;
+      let denseBytes = 0;
+      let moeBytes = 0;
+      let perLayerEmbdBytes = 0;
+      let tokenEmbdBytes = 0;
+      const typeCounts = {};
+      const typeBytes = {};
+      let incompatCount = 0;
+
+      // 1. Process all 1,224 tensors with rules
+      const intermediateTensors = TENSORS_DATA.map((t, idx) => {
+        let matchedType = "";
+        let matchedRule = "Padrao (1D / Fallback)";
+
+        for (const rule of rules) {
+          if (rule.regex.test(t.name)) {
+            matchedType = rule.type;
+            matchedRule = rule.patternStr + "=" + rule.type;
+            break;
+          }
+        }
+
+        if (!matchedType) {
+          if (is1DTensor(t.name, t.shape)) {
+            matchedType = t.orig_type || "f32";
+            matchedRule = "1D Tensor (Nativo)";
+          } else {
+            matchedType = fallback;
+            matchedRule = "Fallback (" + fallback + ")";
+          }
+        }
+
+        // Canonical mapping
+        if (matchedType === "q4_k_m") matchedType = "q4_k";
+        if (matchedType === "q5_k_m") matchedType = "q5_k";
+        if (matchedType === "q3_k_m") matchedType = "q3_k";
+        if (matchedType === "q2_k_s") matchedType = "q2_k";
+
+        // Check compatibility for ffn_down_exps: shape is [640, 2560, 512, 1]
+        // 640 % 256 != 0 -> K-quants fail!
+        let isIncompatible = false;
+        if (t.name.includes("ffn_down_exps")) {
+          const qInfo = QUANT_SIZES[matchedType];
+          if (qInfo && qInfo.block === 256) {
+            isIncompatible = true;
+            incompatCount++;
+          }
+        }
+
+        const sizeBytes = getTensorSize(t.n_elements, matchedType);
+        totalBytes += sizeBytes;
+        totalParams += t.n_elements;
+
+        typeCounts[matchedType] = (typeCounts[matchedType] || 0) + 1;
+        typeBytes[matchedType] = (typeBytes[matchedType] || 0) + sizeBytes;
+
+        const isMoe = t.name.includes("_exps");
+        let layerNum = null;
+        if (t.name.startsWith("blk.")) {
+          const p = t.name.split(".");
+          layerNum = parseInt(p[1], 10);
+        }
+
+        const isPerLayerEmbd = t.name.startsWith("per_layer_token_embd");
+        const isMainTokenEmbd = t.name.startsWith("token_embd");
+
+        if (isMoe) {
+          moeBytes += sizeBytes;
+        } else if (isPerLayerEmbd) {
+          perLayerEmbdBytes += sizeBytes;
+        } else if (isMainTokenEmbd) {
+          tokenEmbdBytes += sizeBytes;
+        } else {
+          denseBytes += sizeBytes;
+        }
+
+        return {
+          idx: idx + 1,
+          name: t.name,
+          shape: t.shape,
+          n_elements: t.n_elements,
+          quantType: matchedType,
+          sizeBytes: sizeBytes,
+          sizeMb: (sizeBytes / (1024 * 1024)).toFixed(1),
+          rule: matchedRule,
+          isMoe: isMoe,
+          isPerLayerEmbd: isPerLayerEmbd,
+          isMainTokenEmbd: isMainTokenEmbd,
+          layerNum: layerNum,
+          isIncompatible: isIncompatible
+        };
+      });
+
+      // Update down tensor warning banner
+      const warnBanner = document.getElementById("downTensorWarning");
+      if (incompatCount > 0) {
+        warnBanner.classList.add("show");
+        warnBanner.innerHTML = `<strong>ALERTA CRITICO (${incompatCount} Tensores ffn_down_exps Incompativeis):</strong><br>Tensores <code>ffn_down_exps</code> possuem dimensao <code>[640, 2560, 512, 1]</code> (640 nao e divisivel por 256). Quants de bloco 256 (K-quants e IQ2/IQ3) causarao erro no llama-quantize! Substitua por <b>IQ4_NL, Q4_0 ou Q8_0</b>.`;
+      } else {
+        warnBanner.classList.remove("show");
+      }
+
+      // 2. Early exit calculation: layers beyond earlyExitLayer save RAM during inference!
+      let activeMoeBytes = 0;
+      for (const t of intermediateTensors) {
+        if (t.isMoe) {
+          if (t.layerNum === null || t.layerNum < earlyExitLayer) {
+            activeMoeBytes += t.sizeBytes;
+          }
+        }
+      }
+
+      // 3. VRAM Components Calculation
+      // If tokenEmbdCpu is false, token_embd.weight is in GPU dense weights; if true, it's on CPU (RAM)
+      let gpuDenseBytes = denseBytes;
+      if (!tokenEmbdCpu) {
+        gpuDenseBytes += tokenEmbdBytes;
+      }
+      const gpuDenseMb = nglOffloadDense ? (gpuDenseBytes / (1024 * 1024)) : 0;
+
+      // Hot experts budget
+      const hotExpMb = Math.min(vramBudgetMb, (activeMoeBytes / (1024 * 1024)));
+
+      // Context KV Cache memory
+      let bytesPerTokKv = 13056; // Q8_0
+      if (kvQuant === "f16") bytesPerTokKv = 24576;
+      else if (kvQuant === "q4_0") bytesPerTokKv = 6912;
+      const kvCacheMb = (ctxTokens * bytesPerTokKv) / (1024 * 1024);
+
+      // DeltaNet SSM Recurrent State
+      const ssmStateMb = 180.0;
+      const totalCtxMb = kvCacheMb + ssmStateMb;
+
+      // Microbatch Activations buffer (UBatch)
+      const ubatchMb = ubatchSize * 0.82 + 30.0;
+
+      // CUDA Driver & Runtime
+      const cudaDriverMb = 400.0;
+
+      const totalVramUsedMb = gpuDenseMb + hotExpMb + totalCtxMb + ubatchMb + cudaDriverMb;
+      const freeVramMb = Math.max(0, TOTAL_VRAM_MB - totalVramUsedMb);
+
+      // 4. Host RAM (DDR4) Components Calculation
+      // Cold experts in RAM = Total active MoE experts - Hot budget in VRAM
+      const activeMoeMb = activeMoeBytes / (1024 * 1024);
+      const coldMoeMb = Math.max(0, activeMoeMb - hotExpMb);
+      const coldMoeGb = coldMoeMb / 1024;
+
+      // Per-layer token embedding working set (lazy mmap ~2.5 GB vs preload 36.6 GB)
+      const perLayerEmbdMb = lazyTokenEmbd ? 2560.0 : (perLayerEmbdBytes / (1024 * 1024));
+      const perLayerEmbdGb = perLayerEmbdMb / 1024;
+
+      // token_embd.weight on CPU (if checked)
+      const tokenEmbdCpuMb = tokenEmbdCpu ? (tokenEmbdBytes / (1024 * 1024)) : 0;
+      const tokenEmbdCpuGb = tokenEmbdCpuMb / 1024;
+
+      // OS / Runtime / Swap reserve
+      const ramOsGb = ramOsMb / 1024;
+
+      const totalRamUsedMb = coldMoeMb + perLayerEmbdMb + tokenEmbdCpuMb + ramOsMb + (nglOffloadDense ? 0 : (denseBytes / (1024 * 1024)));
+      const totalRamUsedGb = totalRamUsedMb / 1024;
+      const freeRamMb = Math.max(0, USABLE_RAM_MB - totalRamUsedMb);
+      const freeRamGb = freeRamMb / 1024;
+
+      // 5. Device assignment for table
+      let ramTensorsCount = 0;
+      let gpuTensorsCount = 0;
+      let moeTensorsCount = 0;
+
+      calculatedTensors = intermediateTensors.map(t => {
+        let dev = "GPU (Dense)";
+        let devClass = "dev-gpu";
+
+        if (t.isIncompatible) {
+          dev = "INCOMPATIVEL";
+          devClass = "dev-incompat";
+        } else if (t.isMoe) {
+          moeTensorsCount++;
+          if (t.layerNum !== null && t.layerNum >= earlyExitLayer) {
+            dev = "EARLY EXIT (Inativo)";
+            devClass = "dev-cold-moe";
+          } else {
+            dev = "RAM Cold / VRAM Hot";
+            devClass = "dev-hot-moe";
+          }
+          ramTensorsCount++;
+        } else if (t.isPerLayerEmbd) {
+          dev = lazyTokenEmbd ? "RAM (Lazy mmap)" : "RAM (Preload)";
+          devClass = "dev-lazy";
+          ramTensorsCount++;
+        } else if (t.isMainTokenEmbd) {
+          if (tokenEmbdCpu) {
+            dev = "RAM (CPU -ot)";
+            devClass = "dev-cold-moe";
+            ramTensorsCount++;
+          } else {
+            dev = "GPU (Dense)";
+            devClass = "dev-gpu";
+            gpuTensorsCount++;
+          }
+        } else if (!nglOffloadDense) {
+          dev = "RAM DDR4";
+          devClass = "dev-cold-moe";
+          ramTensorsCount++;
+        } else {
+          gpuTensorsCount++;
+        }
+
+        return {
+          ...t,
+          device: dev,
+          devClass: devClass
+        };
+      });
+
+      // 6. Metrics & Performance Estimation
+      const totalGb = totalBytes / (1024 * 1024 * 1024);
+      const totalMb = totalBytes / (1024 * 1024);
+      const bpw = (totalBytes * 8) / totalParams;
+
+      document.getElementById("totalGb").innerText = totalGb.toFixed(2) + " GB";
+      document.getElementById("totalMb").innerText = totalMb.toFixed(0) + " MB";
+      document.getElementById("totalBpw").innerText = bpw.toFixed(2) + " bpw";
+
+      // PPL Estimation
+      let basePpl = 3.12;
+      let q3Count = (typeCounts['q3_k'] || 0);
+      let q2Count = (typeCounts['q2_k'] || 0) + (typeCounts['iq2_xxs'] || 0);
+      let iq4Count = (typeCounts['iq4_nl'] || 0) + (typeCounts['q4_k'] || 0);
+
+      if (q2Count > 50) {
+        basePpl += 0.38;
+      } else if (q3Count > 50) {
+        basePpl += 0.12;
+      } else if (iq4Count > 100) {
+        basePpl += 0.04;
+      }
+
+      const exitDiff = 48 - earlyExitLayer;
+      basePpl += (exitDiff * 0.045);
+
+      const estPplEl = document.getElementById("estPpl");
+      const estPplSubEl = document.getElementById("estPplSub");
+      estPplEl.innerText = basePpl.toFixed(2);
+      if (basePpl <= 3.30) {
+        estPplEl.style.color = "var(--success)";
+        estPplSubEl.innerHTML = `<span style="color: var(--success); font-weight: 600;">Meta atingida (&lt; 3.30 PPL)</span>`;
+      } else {
+        estPplEl.style.color = "var(--warning)";
+        estPplSubEl.innerHTML = `<span style="color: var(--warning); font-weight: 600;">Acima da meta (&gt; 3.30 PPL)</span>`;
+      }
+
+      // Throughput Estimation
+      const hitRate = Math.min(0.85, (vramBudgetMb / Math.max(1000, activeMoeMb)) * 0.85);
+      const activeExpertGb = 3.77 * (bpw / 16.0) * 2.0;
+      const denseGb = (gpuDenseMb / 1024);
+
+      const vramLatency = (denseGb / 760.0) * 1000 + (activeExpertGb * hitRate / 760.0) * 1000;
+      const ramLatency = (activeExpertGb * (1.0 - hitRate) / 35.0) * 1000;
+      let estLatency = vramLatency + ramLatency + 8.0;
+
+      if (exitDiff > 0) {
+        estLatency *= (1.0 - (exitDiff / 48.0) * 0.35);
+      }
+
+      const estTps = Math.max(1.0, 1000.0 / estLatency);
+      document.getElementById("estTps").innerText = estTps.toFixed(1) + " t/s";
+      document.getElementById("estLatency").innerText = estLatency.toFixed(1) + " ms/tok";
+
+      // 7. Update VRAM Bar & Legend
+      const pctDense = Math.min(100, (gpuDenseMb / TOTAL_VRAM_MB) * 100);
+      const pctHotExp = Math.min(100, (hotExpMb / TOTAL_VRAM_MB) * 100);
+      const pctCtx = Math.min(100, (totalCtxMb / TOTAL_VRAM_MB) * 100);
+      const pctUb = Math.min(100, (ubatchMb / TOTAL_VRAM_MB) * 100);
+      const pctCuda = Math.min(100, (cudaDriverMb / TOTAL_VRAM_MB) * 100);
+
+      document.getElementById("barDense").style.width = pctDense + "%";
+      document.getElementById("barHotExp").style.width = pctHotExp + "%";
+      document.getElementById("barCtx").style.width = pctCtx + "%";
+      document.getElementById("barUbatch").style.width = pctUb + "%";
+      document.getElementById("barCuda").style.width = pctCuda + "%";
+
+      document.getElementById("legDenseVal").innerText = (gpuDenseMb / 1024).toFixed(2) + " GB";
+      document.getElementById("legHotExpVal").innerText = hotExpMb.toFixed(0) + " MB";
+      document.getElementById("legCtxVal").innerText = totalCtxMb.toFixed(0) + " MB";
+      document.getElementById("legUbVal").innerText = ubatchMb.toFixed(0) + " MB";
+      document.getElementById("legCudaVal").innerText = cudaDriverMb.toFixed(0) + " MB";
+      document.getElementById("legFreeVramVal").innerText = (freeVramMb / 1024).toFixed(2) + " GB";
+
+      const vramTotalText = document.getElementById("vramTotalText");
+      if (totalVramUsedMb > TOTAL_VRAM_MB) {
+        vramTotalText.innerHTML = `<span style="color: var(--danger); font-weight: 700;">ALERTA VRAM: ${(totalVramUsedMb/1024).toFixed(2)} / 10.0 GB!</span>`;
+      } else {
+        vramTotalText.innerText = `${(totalVramUsedMb/1024).toFixed(2)} GB / 10.0 GB (${((totalVramUsedMb/TOTAL_VRAM_MB)*100).toFixed(0)}%)`;
+      }
+
+      // 8. Update RAM Bar & Legend
+      const pctColdExp = Math.min(100, (coldMoeMb / USABLE_RAM_MB) * 100);
+      const pctEmbd = Math.min(100, (perLayerEmbdMb / USABLE_RAM_MB) * 100);
+      const pctTokenEmbdCpu = Math.min(100, (tokenEmbdCpuMb / USABLE_RAM_MB) * 100);
+      const pctRamOs = Math.min(100, (ramOsMb / USABLE_RAM_MB) * 100);
+
+      document.getElementById("barColdExp").style.width = pctColdExp + "%";
+      document.getElementById("barTokenEmbd").style.width = pctEmbd + "%";
+      document.getElementById("barTokenEmbdCpu").style.width = pctTokenEmbdCpu + "%";
+      document.getElementById("barRamOs").style.width = pctRamOs + "%";
+
+      document.getElementById("legColdExpVal").innerText = coldMoeGb.toFixed(2) + " GB";
+      document.getElementById("legEmbdVal").innerText = perLayerEmbdGb.toFixed(2) + " GB";
+      document.getElementById("legTokenEmbdCpuVal").innerText = tokenEmbdCpu ? (tokenEmbdCpuMb.toFixed(0) + " MB") : "0 MB (na GPU)";
+      document.getElementById("legRamOsVal").innerText = (ramOsMb >= 1024 ? ramOsGb.toFixed(2) + " GB" : ramOsMb.toFixed(0) + " MB");
+      document.getElementById("legFreeRamVal").innerText = freeRamGb.toFixed(2) + " GB";
+
+      const ramTotalText = document.getElementById("ramTotalText");
+      if (totalRamUsedMb > USABLE_RAM_MB) {
+        ramTotalText.innerHTML = `<span style="color: var(--danger); font-weight: 700;">SWAP / CRASH OOM: ${totalRamUsedGb.toFixed(2)} / 60.7 GB!</span>`;
+      } else if (totalRamUsedGb > 55.0) {
+        ramTotalText.innerHTML = `<span style="color: var(--warning); font-weight: 700;">ALERTA RAM: ${totalRamUsedGb.toFixed(2)} / 60.7 GB (${((totalRamUsedMb/USABLE_RAM_MB)*100).toFixed(0)}%)</span>`;
+      } else {
+        ramTotalText.innerText = `${totalRamUsedGb.toFixed(2)} GB / 60.7 GB (${((totalRamUsedMb/USABLE_RAM_MB)*100).toFixed(0)}%)`;
+      }
+
+      // 9. Detailed Allocation Description
+      document.getElementById("allocGpuText").innerHTML = `Dense ${(gpuDenseMb/1024).toFixed(2)} GB + Hot Experts ${(hotExpMb/1024).toFixed(2)} GB + Ctx ${(totalCtxMb).toFixed(0)} MB = <b>${(totalVramUsedMb/1024).toFixed(2)} GB</b>`;
+      const tokenEmbdDesc = tokenEmbdCpu ? ` + token_embd ${(tokenEmbdCpuMb/1024).toFixed(2)} GB` : '';
+      document.getElementById("allocRamText").innerHTML = `Cold Experts <b>${coldMoeGb.toFixed(2)} GB</b> + Per-Layer Embd <b>${perLayerEmbdGb.toFixed(2)} GB</b>${tokenEmbdDesc} + SO/Swap <b>${(ramOsGb).toFixed(2)} GB</b> = <b>${totalRamUsedGb.toFixed(2)} GB</b>`;
+
+      // 10. CLI Generator
+      const embdOpt = tokenEmbdCpu ? '-ot "token_embd=CPU"' : '';
+      const cliServer = `./llama-server -m Qwen3.8-Flash-Next-Custom.gguf -ngl 999 -c ${ctxTokens} -ub ${ubatchSize} -ctk ${kvQuant} -ctv ${kvQuant} --vram-expert-budget-mb ${vramBudgetMb} ${embdOpt} --threads 6 --threads-batch 12`;
+      document.getElementById("cliServerText").innerText = cliServer;
+
+      const cliQuantize = `llama-quantize.exe --imatrix 'C:\\llama\\bartowski-Qwen3.8-Flash-Next-imatrix.gguf' --dry-run 'C:\\llama\\Qwen3.8-Flash-Next-BF16\\Qwen3.8-Flash-Next-BF16-00001-of-00008.gguf' 'Qwen3.8-Flash-Next-Custom.gguf'`;
+      document.getElementById("cliQuantizeText").innerText = cliQuantize;
+
+      // 11. Breakdown Chips
+      const breakdownEl = document.getElementById("typesBreakdown");
+      breakdownEl.innerHTML = Object.entries(typeCounts)
+        .sort((a, b) => b[1] - a[1])
+        .map(([qtype, cnt]) => {
+          const mb = (typeBytes[qtype] / (1024 * 1024)).toFixed(0);
+          return `<div class="type-chip"><span class="quant-badge q-${qtype}">${qtype.toUpperCase()}</span><span class="count">${cnt}x</span><span style="color: var(--text-muted); font-size: 0.68rem;">${mb}MB</span></div>`;
+        })
+        .join("");
+
+      // Filter tab counts
+      document.getElementById("countMoeTab").innerText = moeTensorsCount;
+      document.getElementById("countGpuTab").innerText = gpuTensorsCount;
+      document.getElementById("countRamTab").innerText = ramTensorsCount;
+      document.getElementById("countIncompatTab").innerText = incompatCount;
+
+      // Mobile sticky bar
+      const stickyVramVal = document.getElementById("stickyVramVal");
+      if (stickyVramVal) stickyVramVal.innerText = `${(totalVramUsedMb/1024).toFixed(1)} / 10 GB`;
+      const stickyRamVal = document.getElementById("stickyRamVal");
+      if (stickyRamVal) stickyRamVal.innerText = `${totalRamUsedGb.toFixed(1)} / 60.7 GB`;
+      const stickyTpsVal = document.getElementById("stickyTpsVal");
+      if (stickyTpsVal) stickyTpsVal.innerText = `${estTps.toFixed(1)} t/s`;
+      const stickyPplVal = document.getElementById("stickyPplVal");
+      if (stickyPplVal) stickyPplVal.innerText = `PPL ${basePpl.toFixed(2)}`;
+
+      renderTable();
+      const t1 = performance.now();
+      document.getElementById("calcTime").innerText = `${(t1 - t0).toFixed(0)} ms`;
+    }
+
+    function renderTable() {
+      const searchRaw = document.getElementById("searchFilter").value.trim().toLowerCase();
+      const filterLayer = document.getElementById("filterLayerSelect").value;
+      const filterQuant = document.getElementById("filterQuantSelect").value.toLowerCase();
+      const tbody = document.getElementById("tensorTableBody");
+
+      // Update sort indicators on headers
+      const sortFields = ['idx', 'layerNum', 'name', 'device', 'shape', 'n_elements', 'quantType', 'sizeBytes', 'rule'];
+      for (const f of sortFields) {
+        const el = document.getElementById('sort_' + f);
+        if (el) {
+          if (sortCol === f) {
+            el.innerText = sortAsc ? '[^]' : '[v]';
+          } else {
+            el.innerText = '';
+          }
+        }
+      }
+
+      const searchTerms = searchRaw ? searchRaw.split(/\s+/).filter(Boolean) : [];
+
+      let filtered = calculatedTensors.filter(t => {
+        // 1. Device filter tab
+        if (currentDeviceFilter === "moe" && !t.isMoe) return false;
+        if (currentDeviceFilter === "gpu" && (t.isMoe || !t.device.includes("GPU"))) return false;
+        if (currentDeviceFilter === "ram" && !t.device.includes("RAM")) return false;
+        if (currentDeviceFilter === "incompat" && !t.isIncompatible) return false;
+
+        // 2. Layer dropdown filter
+        if (filterLayer !== "all") {
+          if (filterLayer === "global" && t.layerNum !== null) return false;
+          if (filterLayer === "0-3" && (t.layerNum === null || t.layerNum > 3)) return false;
+          if (filterLayer === "4-15" && (t.layerNum === null || t.layerNum < 4 || t.layerNum > 15)) return false;
+          if (filterLayer === "16-27" && (t.layerNum === null || t.layerNum < 16 || t.layerNum > 27)) return false;
+          if (filterLayer === "28-39" && (t.layerNum === null || t.layerNum < 28 || t.layerNum > 39)) return false;
+          if (filterLayer === "40-47" && (t.layerNum === null || t.layerNum < 40)) return false;
+        }
+
+        // 3. Quant dropdown filter
+        if (filterQuant !== "all" && t.quantType.toLowerCase() !== filterQuant) {
+          return false;
+        }
+
+        // 4. Universal multi-term search across ALL fields
+        if (searchTerms.length > 0) {
+          const layerStr = t.layerNum !== null 
+            ? `camada ${t.layerNum} l${t.layerNum} blk.${t.layerNum} ${t.layerNum}` 
+            : "global entrada saida input output";
+          const shapeStr = t.shape.join("x") + " " + t.shape.join(" ");
+          const paramsStr = `${(t.n_elements / 1e6).toFixed(1)}m ${(t.n_elements / 1e9).toFixed(2)}b ${t.n_elements}`;
+          const sizeStr = `${t.sizeMb}mb ${t.sizeMb}`;
+          
+          const allFields = `${t.idx} ${t.name} ${layerStr} ${t.device} ${shapeStr} ${paramsStr} ${t.quantType} ${sizeStr} ${t.rule}`.toLowerCase();
+          
+          for (const term of searchTerms) {
+            if (!allFields.includes(term)) return false;
+          }
+        }
+
+        return true;
+      });
+
+      // 5. Sort matching tensors
+      filtered.sort((a, b) => {
+        const valA = getSortVal(a, sortCol);
+        const valB = getSortVal(b, sortCol);
+        if (valA < valB) return sortAsc ? -1 : 1;
+        if (valA > valB) return sortAsc ? 1 : -1;
+        return a.idx - b.idx;
+      });
+
+      const visibleCount = filtered.length;
+      const rows = [];
+      const renderLimit = 250;
+
+      for (let i = 0; i < Math.min(renderLimit, filtered.length); i++) {
+        const t = filtered[i];
+        const devBadge = `<span class="dev-badge ${t.devClass}">${t.device}</span>`;
+        const layerBadge = t.layerNum !== null 
+          ? `<span class="badge-layer">L${t.layerNum}</span>` 
+          : `<span class="badge-global">Global</span>`;
+
+        rows.push(`<tr>
+          <td style="color: var(--text-muted); font-size: 0.72rem;">${t.idx}</td>
+          <td>${layerBadge}</td>
+          <td class="col-tensor-name">
+            <strong style="color: var(--text-bright);">${t.name}</strong>
+            <div style="font-size: 0.65rem; color: var(--text-muted);" class="mobile-subinfo">${(t.n_elements / 1e6).toFixed(1)}M • ${t.rule}</div>
+          </td>
+          <td>${devBadge}</td>
+          <td class="col-hide-mobile" style="color: var(--text-muted);">${JSON.stringify(t.shape)}</td>
+          <td class="col-hide-mobile">${(t.n_elements / 1e6).toFixed(1)}M</td>
+          <td><span class="quant-badge q-${t.quantType}">${t.quantType.toUpperCase()}</span></td>
+          <td><strong>${t.sizeMb}</strong> <span style="font-size: 0.65rem; color: var(--text-muted);">MB</span></td>
+          <td class="col-hide-mobile" style="color: var(--text-muted); font-size: 0.72rem;">${t.rule}</td>
+        </tr>`);
+      }
+
+      if (visibleCount > renderLimit) {
+        rows.push(`<tr><td colspan="9" style="text-align: center; color: var(--warning); padding: 10px;">Mostrando primeiros ${renderLimit} de ${visibleCount} tensores filtrados. Refine os filtros ou use a busca para resultados especificos.</td></tr>`);
+      }
+
+      tbody.innerHTML = rows.join("");
+      document.getElementById("filterCount").innerText = `${visibleCount} / 1.224 tensores`;
+    }
+
+    function loadPreset(name, btn) {
+      if (PRESETS[name]) {
+        document.getElementById("rulesInput").value = PRESETS[name];
+                if (name === "ttjv_current") {
+          document.getElementById("fallbackType").value = "q6_k";
+          document.getElementById("vramBudgetInput").value = 4700;
+          document.getElementById("vramBudgetDisplay").innerText = "4.700 MB";
+          document.getElementById("kvQuantType").value = "q4_0";
+          document.getElementById("ctxInput").value = 90000;
+          document.getElementById("ctxSizeDisplay").innerText = "90.000";
+        } else {
+          document.getElementById("fallbackType").value = "q4_k";
+        }
+        
+        document.querySelectorAll('.presets-container button').forEach(b => b.classList.remove('active'));
+        const targetBtn = btn || document.getElementById('btn_' + name);
+        if (targetBtn) targetBtn.classList.add('active');
+
+        const labels = {
+          ttjv_current: "TTJV Atual (UD-IQ4_XS) carregado!",
+          ttjv_q3: "TTJV Q3_K_M + IQ4 carregado (PPL < 3.3)!",
+          ttjv_q2: "TTJV Q2_K Rapido carregado!",
+          ttjv_iq4_gate: "TTJV IQ4 Gate carregado!",
+          pure_iq4_nl: "Puro IQ4_NL carregado!",
+          ultra_compact: "Ultra Compacto carregado!"
+        };
+        showToast(labels[name] || "Preset carregado!");
+        runSimulation();
+      }
+    }
+
+    function copyCliServer() {
+      const cmd = document.getElementById("cliServerText").innerText;
+      navigator.clipboard.writeText(cmd).then(() => {
+        showToast("Comando llama-server copiado!");
+      });
+    }
+
+    function copyCliQuantize() {
+      const cmd = document.getElementById("cliQuantizeText").innerText;
+      navigator.clipboard.writeText(cmd).then(() => {
+        showToast("Comando llama-quantize copiado!");
+      });
+    }
+
+    function copyTensorTypesFile() {
+      const text = calculatedTensors.map(t => `${t.name}=${t.quantType}`).join("\n");
+      navigator.clipboard.writeText(text).then(() => {
+        showToast("Lista copiada (1.224 tensores)!");
+      }).catch(err => {
+        console.error("Erro ao copiar:", err);
+      });
+    }
+
+    function downloadTensorTypesFile() {
+      const text = calculatedTensors.map(t => `${t.name}=${t.quantType}`).join("\n");
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "tensor_types_qwen3.8_flash_custom.txt";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      loadPreset("ttjv_current");
+    });
+  </script>
+</body>
+</html>
